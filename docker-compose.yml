@@ -22,8 +22,8 @@ services:
       MAX_ROOMS_PER_IP: ${MAX_ROOMS_PER_IP:-8}
       TURN_MS: ${TURN_MS:-40000}
       GRACE_MS: ${GRACE_MS:-60000}
-      BOT_MIN_MS: ${BOT_MIN_MS:-900}
-      BOT_MAX_MS: ${BOT_MAX_MS:-1600}
+      BOT_MIN_MS: ${BOT_MIN_MS:-1800}
+      BOT_MAX_MS: ${BOT_MAX_MS:-3200}
       LOG: ${LOG:-1}
     # Sin puertos publicados: sólo lo alcanza rona-web por la red interna
     networks: [rona]

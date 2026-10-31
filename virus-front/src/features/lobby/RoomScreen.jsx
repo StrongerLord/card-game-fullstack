@@ -72,7 +72,7 @@ const Seat = ({ player, isHost, isMe, canKick, onKick, index }) => (
       {!player.connected && <span className="ui-chip seat__tag seat__tag--off">Desconectado</span>}
       {player.wins > 0 && (
         <span className="ui-chip seat__tag seat__tag--wins" title={`${player.wins} ${player.wins === 1 ? 'victoria' : 'victorias'} en esta sala`}>
-          🏆 {player.wins}
+          👑 {player.wins}
         </span>
       )}
     </div>

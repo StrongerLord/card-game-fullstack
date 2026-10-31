@@ -146,7 +146,7 @@ Servidor → cliente:
 
 Tiempos:
 - Turno de 40 s (`TURN_MS`). Si se agota, el servidor llama `advanceTimeout`.
-- Los bots actúan tras 900–1600 ms de "pensar".
+- Los bots actúan tras 1800–3200 ms de "pensar".
 - Un jugador desconectado conserva su asiento 60 s. Si no vuelve, `removePlayer` lo saca. Mientras está desconectado, sus turnos se resuelven por timeout, pero de 8 s y no de 40 s.
 - Al terminar una partida la sala pasa a `finished` y el anfitrión puede pedir `room:rematch`.
 

@@ -54,7 +54,7 @@ de la red local basta con abrir `http://<ip-de-tu-pc>:5173`.
 | `DISCONNECTED_TURN_MS` | `8000` | turno de un jugador desconectado |
 | `RECONNECT_TURN_MS` | `15000` | margen mínimo al volver en tu propio turno (una vez por turno, máx. 3 por partida) |
 | `GRACE_MS` | `60000` | cuánto se guarda el asiento de un desconectado |
-| `BOT_MIN_MS` / `BOT_MAX_MS` | `900` / `1600` | lo que "piensa" un bot |
+| `BOT_MIN_MS` / `BOT_MAX_MS` | `1800` / `3200` | lo que "piensa" un bot |
 | `LOG` | `1` | `LOG=0` apaga los logs |
 | `MAX_CONNECTIONS_PER_IP` | `20` | sockets abiertos a la vez por IP (`0` = sin tope) |
 | `SESSIONS_PER_IP_PER_MIN` | `20` | sesiones nuevas por minuto por IP (`0` = sin tope) |

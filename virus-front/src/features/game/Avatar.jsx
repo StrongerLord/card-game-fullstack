@@ -124,7 +124,7 @@ export const Avatar = memo(function Avatar({
         {out && <span className="gt-badge gt-badge-out">fuera</span>}
         {wins > 0 && (
           <span className="gt-badge gt-badge-wins" title={`${wins} ${wins === 1 ? 'victoria' : 'victorias'} en esta sala`} aria-label={`${wins} ${wins === 1 ? 'victoria' : 'victorias'}`}>
-            🏆{wins}
+            👑{wins}
           </span>
         )}
       </motion.div>

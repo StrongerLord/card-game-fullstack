@@ -58,7 +58,7 @@ function makeLogger(enabled) {
  * @param {number} [opts.disconnectedTurnMs]   turno de un desconectado (DISCONNECTED_TURN_MS, 8 s)
  * @param {number} [opts.reconnectTurnMs]      margen mínimo al volver en tu turno (15 s)
  * @param {number} [opts.graceMs]              asiento guardado al desconectarse (GRACE_MS, 60 s)
- * @param {number} [opts.botMinMs] [opts.botMaxMs]  lo que "piensa" un bot (900–1600 ms)
+ * @param {number} [opts.botMinMs] [opts.botMaxMs]  lo que "piensa" un bot (1800–3200 ms)
  * @param {boolean} [opts.botReactions]        emotes de los bots tras las jugadas
  * @param {number} [opts.botReactMinMs] [opts.botReactMaxMs]  respiro antes de cada reacción (700–1500 ms)
  * @param {number} [opts.seed]                 semilla fija para las partidas (tests)
@@ -73,8 +73,8 @@ export function createServer(opts = {}) {
     turnMs: opts.turnMs ?? envInt('TURN_MS', 40_000),
     disconnectedTurnMs: opts.disconnectedTurnMs ?? envInt('DISCONNECTED_TURN_MS', 8_000),
     reconnectTurnMs: opts.reconnectTurnMs ?? envInt('RECONNECT_TURN_MS', 15_000),
-    botMinMs: opts.botMinMs ?? envInt('BOT_MIN_MS', 900),
-    botMaxMs: opts.botMaxMs ?? envInt('BOT_MAX_MS', 1600),
+    botMinMs: opts.botMinMs ?? envInt('BOT_MIN_MS', 1800),
+    botMaxMs: opts.botMaxMs ?? envInt('BOT_MAX_MS', 3200),
     // Emotes de los bots tras cada jugada (BOT_REACTIONS=0 los apaga)
     botReactions: opts.botReactions ?? process.env.BOT_REACTIONS !== '0',
     botReactMinMs: opts.botReactMinMs ?? envInt('BOT_REACT_MIN_MS', 700),
