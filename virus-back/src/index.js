@@ -59,6 +59,8 @@ function makeLogger(enabled) {
  * @param {number} [opts.reconnectTurnMs]      margen mínimo al volver en tu turno (15 s)
  * @param {number} [opts.graceMs]              asiento guardado al desconectarse (GRACE_MS, 60 s)
  * @param {number} [opts.botMinMs] [opts.botMaxMs]  lo que "piensa" un bot (900–1600 ms)
+ * @param {boolean} [opts.botReactions]        emotes de los bots tras las jugadas
+ * @param {number} [opts.botReactMinMs] [opts.botReactMaxMs]  respiro antes de cada reacción (700–1500 ms)
  * @param {number} [opts.seed]                 semilla fija para las partidas (tests)
  * @param {boolean} [opts.fixedSeats]          no barajar asientos al empezar (tests)
  * @param {string}  [opts.clientOrigin]        CORS; por defecto cualquier origen
@@ -73,6 +75,10 @@ export function createServer(opts = {}) {
     reconnectTurnMs: opts.reconnectTurnMs ?? envInt('RECONNECT_TURN_MS', 15_000),
     botMinMs: opts.botMinMs ?? envInt('BOT_MIN_MS', 900),
     botMaxMs: opts.botMaxMs ?? envInt('BOT_MAX_MS', 1600),
+    // Emotes de los bots tras cada jugada (BOT_REACTIONS=0 los apaga)
+    botReactions: opts.botReactions ?? process.env.BOT_REACTIONS !== '0',
+    botReactMinMs: opts.botReactMinMs ?? envInt('BOT_REACT_MIN_MS', 700),
+    botReactMaxMs: opts.botReactMaxMs ?? envInt('BOT_REACT_MAX_MS', 1500),
     seed: opts.seed,
     fixedSeats: !!opts.fixedSeats,
   };
@@ -255,6 +261,7 @@ export function createServer(opts = {}) {
     handle('room:kick', (payload, session) => rooms.kick(session, payload));
     handle('room:start', (payload, session) => rooms.start(session, payload));
     handle('room:chat', (payload, session) => rooms.chat(session, payload));
+    handle('room:emote', (payload, session) => rooms.emote(session, payload));
     handle('room:rematch', (payload, session) => rooms.rematch(session, payload));
     handle('game:action', (payload, session) => rooms.act(session, payload));
 

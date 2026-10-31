@@ -98,7 +98,7 @@ describe('Salas', () => {
     assert.equal(st.hostId, a.session.playerId);
     assert.equal(st.status, 'lobby');
     assert.equal(st.players.length, 1);
-    assert.deepEqual(st.players[0], { id: a.session.playerId, name: 'Ana', avatar: 1, color: '#ff0000', isBot: false, connected: true });
+    assert.deepEqual(st.players[0], { id: a.session.playerId, name: 'Ana', avatar: 1, color: '#ff0000', isBot: false, connected: true, wins: 0 });
     const summary = (await update).find((r) => r.id === roomId);
     assert.equal(summary.playerCount, 1);
 

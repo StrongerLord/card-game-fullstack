@@ -1862,3 +1862,84 @@
     display: none;
   }
 }
+
+/* ---------- Victorias, marcador y emotes ---------- */
+.gt-badge-wins {
+  left: -18%;
+  right: auto;
+  top: -14%;
+  bottom: auto;
+  transform: rotate(-10deg);
+  background: #ffc61a;
+  color: #5a3a00;
+  font-size: clamp(11px, calc(var(--as) * 0.17), 18px);
+  padding: 1px 6px 0 4px;
+}
+
+.gt-score {
+  list-style: none;
+  margin: 12px auto 4px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  width: min(340px, 100%);
+}
+.gt-score-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px 5px 6px;
+  border-radius: 14px;
+  background: #f3eeff;
+  border: 2px solid transparent;
+  text-align: left;
+}
+.gt-score-row.is-winner {
+  background: #fff3c4;
+  border-color: #ffc61a;
+}
+.gt-score-row img {
+  width: 34px;
+  height: 34px;
+  border-radius: 24%;
+  border: 3px solid var(--pc);
+  background: #fff8ee;
+  flex: none;
+}
+.gt-score-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: #2a1a5e;
+}
+.gt-score-name small {
+  font-weight: 400;
+  color: #8d82b8;
+}
+.gt-score-wins {
+  font-size: 18px;
+  color: #2a1a5e;
+}
+.gt-score-wins b {
+  display: inline-block;
+  min-width: 1.2em;
+  text-align: right;
+}
+
+.gt-end-emotes {
+  margin: 10px 0 2px;
+}
+.gt-end-emotes .emote-btn {
+  background: #efe8ff;
+}
+.gt-end-emotes .emote-btn:hover {
+  background: #ddd0ff;
+}
+
+.gt-root .gc img {
+  -webkit-touch-callout: none;
+}

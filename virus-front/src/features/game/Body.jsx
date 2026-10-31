@@ -73,7 +73,6 @@ export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetabl
       data-drop={targetable ? 'slot' : undefined}
       data-pid={playerId}
       data-slot={slot.id}
-      title={label}
       {...a11y}
     >
       <div className="gt-slot-aura" style={{ height: stackH }} />

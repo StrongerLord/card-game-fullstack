@@ -15,6 +15,8 @@ import { FxLayer } from './FxLayer';
 import { Narrator, ErrorToasts, TurnBanner, toastError } from './Overlays';
 import { ConfirmDialog, EndModal } from './Dialogs';
 import { ChatPanel } from './ChatPanel';
+import { CardTip } from './CardTip';
+import { EmotePicker } from '../emotes/EmotePicker';
 import doodles from '../../assets/doodles.png';
 import './game.css';
 
@@ -386,6 +388,7 @@ export const GameScreen = () => {
             >
               <SpeakerIcon muted={muted} />
             </button>
+            <EmotePicker buttonClassName="gt-icon-btn" />
             <ChatPanel me={me} open={chatOpen} onToggle={() => setChatOpen((o) => !o)} />
             <button type="button" className="gt-icon-btn" onClick={() => setConfirmExit(true)} aria-label="Salir de la partida" title="Salir">
               <ExitIcon />
@@ -393,6 +396,7 @@ export const GameScreen = () => {
           </div>
 
           <FxLayer />
+          <CardTip view={view} me={me} />
           <TurnBanner />
 
           {/* Celular en vertical: la mesa necesita la pantalla acostada (lo muestra el CSS) */}
@@ -427,6 +431,8 @@ export const GameScreen = () => {
             onRematch={rematch}
             onLeave={leave}
             busy={leaving}
+            scores={room?.players || []}
+            me={me}
           />
         </div>
       </LayoutGroup>

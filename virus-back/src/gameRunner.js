@@ -18,13 +18,15 @@ export class GameRunner {
    * @param {(batch) => void} o.emitEvents   difunde { seq, events } a la sala
    * @param {() => void} o.emitStates        manda el game:state personalizado a cada uno
    * @param {(winner) => void} o.onFinish
+   * @param {(events) => void} [o.onEvents]  cada lote ya difundido (para las reacciones de los bots)
    */
-  constructor({ players, seed, timing, lookup, emitEvents, emitStates, onFinish, log }) {
+  constructor({ players, seed, timing, lookup, emitEvents, emitStates, onFinish, onEvents, log }) {
     this.timing = timing;
     this.lookup = lookup;
     this.emitEvents = emitEvents;
     this.emitStates = emitStates;
     this.onFinish = onFinish;
+    this.onEvents = onEvents;
     this.log = log;
     this.state = createGame({ players, seed: seed ?? crypto.randomInt(2 ** 31) });
     this.seq = 0;
@@ -108,6 +110,11 @@ export class GameRunner {
     if (this.state.winner && !this.finished) {
       this.finished = true;
       this.onFinish(this.state.winner);
+    }
+    try {
+      this.onEvents?.(events);
+    } catch (err) {
+      this.log.error('Error en las reacciones de los bots:', err);
     }
   }
 

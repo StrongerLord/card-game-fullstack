@@ -85,6 +85,7 @@ export const Seat = memo(function Seat({ seat, gp, info, hl, picked, hover, onSl
       onClick={pickPlayer}
       compact={seat.compact}
       nameMax={seat.nameMax}
+      bubbleSide={seat.pos === 'top' ? 'bottom' : seat.pos === 'left' ? 'right' : 'left'}
     />
   );
 

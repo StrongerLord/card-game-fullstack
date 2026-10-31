@@ -163,6 +163,7 @@ export const sfx = {
   // Clic de botón / mensaje de chat
   click: () => tone({ freq: 760, type: 'triangle', dur: 0.05, vol: 0.12 }),
   message: () => notes([988, 1319], { type: 'sine', step: 0.07, dur: 0.12, vol: 0.1 }),
+  emote: () => tone({ freq: 520, to: 1180, type: 'sine', dur: 0.12, vol: 0.13 }),
 };
 
 export const isMuted = () => muted;

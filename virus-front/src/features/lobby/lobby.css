@@ -1053,3 +1053,17 @@
   .start-control { margin-left: 0; flex-direction: column; }
   .start-control__btn { width: 100%; }
 }
+
+.seat__tag--wins { background: #ffc61a; color: #5a3a00; }
+
+.chat__emotes {
+  padding: 6px 0 2px;
+  gap: 2px;
+}
+.chat__emotes .emote-btn {
+  width: 34px;
+  height: 34px;
+  font-size: 20px;
+  background: #f1ecff;
+}
+.chat__emotes .emote-btn:hover { background: #ddd0ff; }

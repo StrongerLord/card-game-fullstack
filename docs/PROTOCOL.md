@@ -132,10 +132,12 @@ Todos los eventos cliente→servidor usan **ack**: `socket.emit(ev, payload, (re
 - `room:start` (sólo el anfitrión, con 2 a 6 jugadores) → ack. Errores: `NOT_HOST`, `NOT_ENOUGH_PLAYERS`.
 - `room:chat` `{ text }` (de 1 a 200 caracteres; ráfagas limitadas a 5 por cada 5 s, por sesión: salir y volver no reinicia el límite).
 - `room:rematch` (sólo el anfitrión, con la partida terminada) → la sala vuelve al lobby con los mismos jugadores.
+- `room:emote` `{ emote }` (en la sala, en cualquier estado) → ack. `emote` es una clave de `shared/emotes.js` (`angry`, `rage`, `laugh`, `cry`, `cool`, `evil`, `shock`, `clap`). Como mucho 4 por sesión cada 3 s (`RATE_LIMITED`). No queda en el historial del chat.
 
 Servidor → cliente:
-- `room:state` `RoomState = { id, name, hostId, maxPlayers, status, players: [{ id, name, avatar, color, isBot, connected }] }`. Se manda a la sala cada vez que algo cambia, y `null` cuando sales.
+- `room:state` `RoomState = { id, name, hostId, maxPlayers, status, gamesPlayed, players: [{ id, name, avatar, color, isBot, connected, wins }] }`. Se manda a la sala cada vez que algo cambia, y `null` cuando sales. `wins` son las partidas que ganó cada quien en esta sala y `gamesPlayed` las que se han jugado; se acumulan entre revanchas y se pierden con la sala.
 - `room:chat` `{ id, from: { id, name, color } | null, text, ts, system: boolean }`. Los mensajes de sistema ("Vane se unió", "Elian ganó") llevan `system: true`.
+- `room:emote` `{ playerId, emote, say?, ts }` a toda la sala. `say` sólo lo traen las reacciones de los bots: tras cada lote de eventos, un bot afectado (le infectaron, destruyeron o robaron un órgano, le cambiaron el cuerpo, ganó o perdió…) puede reaccionar tras 0.7–1.5 s (`BOT_REACT_MIN_MS`/`BOT_REACT_MAX_MS`), como mucho una vez cada 3.5 s; a veces también contestan a los emotes de los humanos. `BOT_REACTIONS=0` las apaga.
 
 ### Partida
 - `game:action` `Action` → ack `{ ok }` o `{ ok: false, error }`.

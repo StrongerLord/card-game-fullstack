@@ -4,6 +4,7 @@ import avatars from '../../lib/avatars';
 import { avatarAnchor } from './fx';
 import { useFitFont } from './fitText';
 import { pressable } from './a11y';
+import { EmoteBubble } from '../emotes/EmoteBubble';
 
 // Anillo de cuenta regresiva del turno: una animación CSS con la duración restante
 const TurnRing = ({ size, timer }) => {
@@ -65,12 +66,14 @@ const PlayerName = ({ name, size, nameMax, compact, nameSide }) => {
 // Avatar de un jugador con su color, nombre, anillo de turno y estado
 export const Avatar = memo(function Avatar({
   info, gp, size, timer, isMe = false, nameSide = 'right', targetable = false, hovered = false, onClick, compact = false, nameMax,
+  bubbleSide = 'top',
 }) {
   const color = info?.color || '#ffae00';
   const img = avatars[info?.avatar ?? 0] || avatars[0];
   const isTurn = !!gp?.isTurn;
   const offline = info && info.connected === false;
   const out = !!gp?.out;
+  const wins = info?.wins || 0;
   const classes = [
     'gt-avatar',
     `gt-name-${nameSide}`,
@@ -119,7 +122,13 @@ export const Avatar = memo(function Avatar({
           : <span className="gt-badge gt-badge-skip">pierde turno</span>)}
         {info?.isBot && <span className="gt-badge gt-badge-bot">bot</span>}
         {out && <span className="gt-badge gt-badge-out">fuera</span>}
+        {wins > 0 && (
+          <span className="gt-badge gt-badge-wins" title={`${wins} ${wins === 1 ? 'victoria' : 'victorias'} en esta sala`} aria-label={`${wins} ${wins === 1 ? 'victoria' : 'victorias'}`}>
+            🏆{wins}
+          </span>
+        )}
       </motion.div>
+      {gp?.id && <EmoteBubble playerId={gp.id} side={bubbleSide} />}
       {nameSide !== 'none' && (
         <div className="gt-avatar-name">
           {nameMax

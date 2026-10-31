@@ -3,6 +3,8 @@
 import crypto from 'node:crypto';
 import { fail } from './errors.js';
 import { GameRunner } from './gameRunner.js';
+import { reactionsFor, replyTo } from './botTalk.js';
+import { EMOTES } from '../../shared/emotes.js';
 import { randomAvatar, randomColor } from './sessions.js';
 import {
   asObject, parseText, parseId, parseRoomId, parseAction, ROOM_NAME_MAX, CHAT_MAX,
@@ -17,6 +19,10 @@ const CHAT_WINDOW_MS = 5000;
 // Entrar a salas (unirse o crear) por sesión: frena el bucle salir/entrar que inunda el chat de avisos
 const JOIN_BURST = 6;
 const JOIN_WINDOW_MS = 30_000;
+// Emotes: 4 por sesión cada 3 s; un bot no reacciona más de una vez cada 3.5 s
+const EMOTE_BURST = 4;
+const EMOTE_WINDOW_MS = 3000;
+const BOT_EMOTE_COOLDOWN_MS = 3500;
 const ROOM_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const BOT_NAMES = [
@@ -66,6 +72,7 @@ export class RoomManager {
       hostId: room.hostId,
       maxPlayers: room.maxPlayers,
       status: room.status,
+      gamesPlayed: room.gamesPlayed,
       players: room.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -73,6 +80,7 @@ export class RoomManager {
         color: p.color,
         isBot: p.isBot,
         connected: this.isConnected(p),
+        wins: room.wins.get(p.id) || 0,
       })),
     };
   }
@@ -174,6 +182,10 @@ export class RoomManager {
       players: [],
       chat: [],
       runner: null,
+      wins: new Map(),        // playerId -> partidas ganadas en esta sala
+      gamesPlayed: 0,
+      botEmoteAt: new Map(),  // botId -> última vez que reaccionó
+      timers: new Set(),      // reacciones de bots pendientes
       createdAt: Date.now(),
       creatorIp: session.ip || '',
     };
@@ -266,6 +278,8 @@ export class RoomManager {
 
   destroy(room) {
     if (room.runner) room.runner.dispose();
+    for (const t of room.timers) clearTimeout(t);
+    room.timers.clear();
     room.runner = null;
     this.rooms.delete(room.id);
     for (const p of room.players) {
@@ -350,6 +364,60 @@ export class RoomManager {
     return {};
   }
 
+  // Emote rápido: no queda en el historial, sólo se difunde a la sala
+  emote(session, payload) {
+    const p = asObject(payload, { optional: false });
+    if (typeof p.emote !== 'string' || !Object.hasOwn(EMOTES, p.emote)) fail('BAD_PAYLOAD', '"emote" no es un emote válido');
+    const room = this.roomOf(session);
+    if (!room.players.some((x) => x.id === session.playerId)) fail('NOT_IN_ROOM', 'No estás en esa sala');
+    const now = Date.now();
+    const times = (session.emoteTimes || []).filter((t) => now - t < EMOTE_WINDOW_MS);
+    if (times.length >= EMOTE_BURST) {
+      session.emoteTimes = times;
+      fail('RATE_LIMITED', 'Tranquilo, espera tantito');
+    }
+    times.push(now);
+    session.emoteTimes = times;
+    this.emitEmote(room, { playerId: session.playerId, emote: p.emote });
+    // A veces un bot le contesta
+    const reply = this.timing.botReactions ? replyTo(p.emote, this.activeBots(room)) : null;
+    if (reply) this.scheduleBotReactions(room, [reply]);
+    return {};
+  }
+
+  // Reacciones pendientes de la partida anterior: que no salgan en la siguiente
+  clearBotReactions(room) {
+    for (const t of room.timers) clearTimeout(t);
+    room.timers.clear();
+    room.botEmoteAt.clear();
+  }
+
+  emitEmote(room, { playerId, emote, say }) {
+    this.io.to(channel(room.id)).emit('room:emote', { playerId, emote, ...(say ? { say } : {}), ts: Date.now() });
+  }
+
+  // Bots de la sala que siguen en la mesa (en partida, los que no han salido)
+  activeBots(room) {
+    const out = new Set(room.runner?.state.players.filter((p) => p.out).map((p) => p.id) || []);
+    return room.players.filter((p) => p.isBot && !out.has(p.id)).map((p) => p.id);
+  }
+
+  // Cada reacción sale tras un respiro (que se alcance a ver la animación de la jugada)
+  scheduleBotReactions(room, reactions) {
+    const now = Date.now();
+    const { botReactMinMs: min, botReactMaxMs: max } = this.timing;
+    for (const r of reactions) {
+      if (now - (room.botEmoteAt.get(r.playerId) || 0) < BOT_EMOTE_COOLDOWN_MS) continue;
+      room.botEmoteAt.set(r.playerId, now);
+      const t = setTimeout(() => {
+        room.timers.delete(t);
+        if (this.rooms.get(room.id) !== room || !room.players.some((x) => x.id === r.playerId)) return;
+        this.emitEmote(room, r);
+      }, min + Math.floor(Math.random() * (Math.max(0, max - min) + 1)));
+      room.timers.add(t);
+    }
+  }
+
   // El perfil cambió: se refleja en la sala (la partida en curso conserva el nombre del motor)
   onProfileChanged(session) {
     const room = session.roomId ? this.rooms.get(session.roomId) : null;
@@ -393,6 +461,9 @@ export class RoomManager {
         for (const pl of room.players) if (!pl.isBot) this.sendGameState(room, pl.id);
       },
       onFinish: (winner) => this.onGameFinished(room, winner),
+      onEvents: (events) => {
+        if (this.timing.botReactions) this.scheduleBotReactions(room, reactionsFor(events, this.activeBots(room)));
+      },
     });
     room.runner = runner;
     room.status = 'playing';
@@ -416,6 +487,10 @@ export class RoomManager {
   onGameFinished(room, winner) {
     if (this.rooms.get(room.id) !== room) return;
     room.status = 'finished';
+    room.gamesPlayed += 1;
+    if (room.players.some((p) => p.id === winner.playerId)) {
+      room.wins.set(winner.playerId, (room.wins.get(winner.playerId) || 0) + 1);
+    }
     this.handOffHostIfAway(room, { announce: false });
     const name = room.runner?.state.players.find((p) => p.id === winner.playerId)?.name || 'Alguien';
     this.log.info(`Sala ${room.id}: ganó ${name} (${winner.reason})`);
@@ -433,6 +508,7 @@ export class RoomManager {
     if (room.status !== 'finished') fail('NOT_FINISHED', 'La partida todavía no termina');
     if (room.runner) room.runner.dispose();
     room.runner = null;
+    this.clearBotReactions(room);
     room.status = 'lobby';
     this.broadcastRoom(room);
     this.system(room, '¡Revancha! De vuelta a la sala de espera');
@@ -496,7 +572,10 @@ export class RoomManager {
   }
 
   dispose() {
-    for (const room of this.rooms.values()) room.runner?.dispose();
+    for (const room of this.rooms.values()) {
+      room.runner?.dispose();
+      for (const t of room.timers) clearTimeout(t);
+    }
     this.rooms.clear();
   }
 }

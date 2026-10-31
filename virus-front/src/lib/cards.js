@@ -54,3 +54,29 @@ export const cardLabel = (card) => {
   if (card.kind === 'virus') return card.color === 'multi' ? 'Roña comodín' : `Roña de ${COLOR_NAMES[card.color]}`;
   return card.color === 'multi' ? 'Medicina comodín' : `Medicina de ${COLOR_NAMES[card.color]}`;
 };
+
+// Qué hace cada carta (la ayuda que sale al dejar el puntero encima o al mantenerla presionada)
+export const TREATMENT_RULES = {
+  transplant: 'Intercambia un órgano (con lo que tenga encima) entre dos jugadores distintos; puedes ser uno de ellos. No sirve con órganos inmunes ni si alguien queda con dos del mismo color.',
+  thief: 'Roba un órgano de otro jugador, con sus roñas y medicinas, y pásalo a tu cuerpo. No sirve con órganos inmunes ni si ya tienes uno de ese color.',
+  contagion: 'Pasa las roñas de tus órganos infectados a órganos sanos de los demás que sean del mismo color. Cada órgano recibe como mucho una.',
+  glove: 'Todos los demás tiran su mano completa y pierden su siguiente turno.',
+  medicalError: 'Intercambia tu cuerpo completo con el de otro jugador.',
+};
+
+export const cardHelp = (card) => {
+  if (!card) return '';
+  if (card.kind === 'treatment') return TREATMENT_RULES[card.treatment] || '';
+  const multi = card.color === 'multi';
+  const color = COLOR_NAMES[card.color];
+  if (card.kind === 'organ') {
+    return multi
+      ? 'Ponlo en tu cuerpo: cuenta como un color más para ganar. Le pega cualquier roña y lo cura cualquier medicina.'
+      : `Ponlo en tu cuerpo. Gana quien junte 4 órganos de distinto color sin roña. No puedes tener dos ${color}s.`;
+  }
+  const where = multi ? 'cualquier órgano' : `un ${color} (o un órgano comodín)`;
+  if (card.kind === 'virus') {
+    return `Juégala sobre ${where} de cualquier jugador: si está sano lo infecta, si ya tenía roña lo destruye y si estaba vacunado le quita la vacuna. A los inmunes no les hace nada.`;
+  }
+  return `Juégala sobre ${where} de tu cuerpo: le quita una roña o lo vacuna. Con dos vacunas queda inmune para siempre.`;
+};

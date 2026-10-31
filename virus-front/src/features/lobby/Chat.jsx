@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 import { toastError } from './toasts';
 import { IconSend } from './icons';
+import { EmoteRow } from '../emotes/EmotePicker';
 
 const CHAT_MAX = 200;
 
@@ -95,6 +96,7 @@ export const Chat = () => {
         </AnimatePresence>
       </div>
 
+      <EmoteRow className="chat__emotes" />
       <form className="chat__form" onSubmit={send}>
         <input
           ref={inputRef}

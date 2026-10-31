@@ -13,7 +13,11 @@ const saveProfile = (profile) => {
 };
 
 // Lo que se limpia al salir de una sala
-const NO_ROOM = { room: null, chat: [], game: null, eventQueue: [] };
+const NO_ROOM = { room: null, chat: [], game: null, eventQueue: [], emotes: {} };
+// Cuánto se queda un emote encima del avatar (más si trae frase)
+const EMOTE_MS = 2600;
+const EMOTE_SAY_MS = 3600;
+let emoteSeq = 0;
 
 export const useStore = create((set, get) => ({
   connected: socket.connected,
@@ -25,6 +29,7 @@ export const useStore = create((set, get) => ({
   chat: [],
   game: null,             // PlayerView & { turnDeadline, turnMs }
   eventQueue: [],         // lotes { seq, events } pendientes de animar
+  emotes: {},             // playerId -> { id, emote, say? } que se está mostrando
 
   hello: async () => {
     const res = await request('session:hello', {
@@ -73,6 +78,7 @@ export const useStore = create((set, get) => ({
   startGame: () => request('room:start'),
   rematch: () => request('room:rematch'),
   sendChat: (text) => request('room:chat', { text }),
+  sendEmote: (emote) => request('room:emote', { emote }),
   act: (action) => request('game:action', action),
 
   // Vuelve a conectar esta pestaña después de que otra tomó la sesión
@@ -114,3 +120,15 @@ socket.on('game:events', (batch) => useStore.setState((s) => {
   return { eventQueue: [...s.eventQueue, batch] };
 }));
 socket.on('game:state', (game) => useStore.setState({ game }));
+// Un emote nuevo del mismo jugador reemplaza al anterior; cada uno se borra solo
+socket.on('room:emote', (e) => {
+  if (!e?.playerId || !e.emote) return;
+  const item = { id: ++emoteSeq, emote: e.emote, say: e.say };
+  useStore.setState((s) => ({ emotes: { ...s.emotes, [e.playerId]: item } }));
+  setTimeout(() => useStore.setState((s) => {
+    if (s.emotes[e.playerId]?.id !== item.id) return {};
+    const rest = { ...s.emotes };
+    delete rest[e.playerId];
+    return { emotes: rest };
+  }), item.say ? EMOTE_SAY_MS : EMOTE_MS);
+});

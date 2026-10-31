@@ -5,6 +5,8 @@ import avatars from '../../lib/avatars';
 import { sfx } from '../../lib/sfx';
 import { reducedMotion } from './fx';
 import { useFitFont } from './fitText';
+import { EmoteBubble } from '../emotes/EmoteBubble';
+import { EmoteRow } from '../emotes/EmotePicker';
 
 // Diálogo de confirmación propio (sin window.confirm)
 export const ConfirmDialog = memo(function ConfirmDialog({ open, title, text, confirmLabel = 'Sí', cancelLabel = 'Cancelar', danger, onConfirm, onCancel }) {
@@ -56,7 +58,35 @@ const celebrate = () => {
 };
 
 // Fin de la partida: victoria (confeti) o derrota (lluvia de roña)
-export const EndModal = memo(function EndModal({ winner, winnerInfo, isMe, isHost, onRematch, onLeave, busy }) {
+// Marcador de la sala: victorias acumuladas entre revanchas
+const Scoreboard = ({ scores, me, winnerId }) => {
+  const rows = [...scores].sort((a, b) => b.wins - a.wins);
+  const top = rows[0]?.wins || 0;
+  return (
+    <ol className="gt-score" aria-label="Marcador de la sala">
+      {rows.map((p) => (
+        <motion.li
+          key={p.id}
+          layout
+          className={`gt-score-row ${p.id === winnerId ? 'is-winner' : ''} ${p.id === me ? 'is-me' : ''}`}
+          style={{ '--pc': p.color, '--as': '40px' }}
+        >
+          <img src={avatars[p.avatar ?? 0] || avatars[0]} alt="" />
+          <span className="gt-score-name">{p.name}{p.id === me && <small> (tú)</small>}</span>
+          <span className="gt-score-wins">
+            {p.wins > 0 && p.wins === top && '👑 '}
+            {p.id === winnerId
+              ? <motion.b key={p.wins} initial={{ scale: 2.4, color: '#ffae00' }} animate={{ scale: 1, color: '#2a1a5e' }} transition={{ delay: 0.6, type: 'spring', stiffness: 300, damping: 12 }}>{p.wins}</motion.b>
+              : <b>{p.wins}</b>}
+          </span>
+          <EmoteBubble playerId={p.id} side="right" />
+        </motion.li>
+      ))}
+    </ol>
+  );
+};
+
+export const EndModal = memo(function EndModal({ winner, winnerInfo, isMe, isHost, onRematch, onLeave, busy, scores = [], me }) {
   useEffect(() => {
     if (!winner) return undefined;
     if (isMe) {
@@ -114,6 +144,8 @@ export const EndModal = memo(function EndModal({ winner, winnerInfo, isMe, isHos
                 ? (isMe ? 'Los demás abandonaron la partida.' : `${name} se quedó solo en la mesa.`)
                 : (isMe ? 'Tienes 4 órganos sanos. ¡Eres inmune a la roña!' : 'La roña te ganó esta vez. ¡Ánimo para la revancha!')}
             </p>
+            {scores.length > 1 && <Scoreboard scores={scores} me={me} winnerId={winner.playerId} />}
+            <EmoteRow className="gt-end-emotes" />
             <div className="gt-modal-actions">
               <button type="button" className="gt-btn gt-btn-ghost" onClick={onLeave} disabled={busy}>Salir</button>
               {isHost

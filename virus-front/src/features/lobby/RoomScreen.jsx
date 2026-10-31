@@ -7,6 +7,8 @@ import { Avatar } from './Avatar';
 import { Chat } from './Chat';
 import { toast, toastError } from './toasts';
 import { useLobbyMusic } from './music';
+import { EmoteBubble } from '../emotes/EmoteBubble';
+import { useEmoteHotkeys } from '../emotes/EmotePicker';
 import { IconClose, IconCrown, IconDoor, IconPlay, IconRobot, IconWifiOff } from './icons';
 import '../home/home.css';
 import './lobby.css';
@@ -21,7 +23,7 @@ const Seat = ({ player, isHost, isMe, canKick, onKick, index }) => (
   <motion.li
     layout
     className={`seat ${isMe ? 'is-me' : ''} ${player.connected ? '' : 'is-off'}`}
-    style={{ '--seat-color': player.color }}
+    style={{ '--seat-color': player.color, '--pc': player.color, '--as': '86px' }}
     initial={{ opacity: 0, scale: 0.3, rotate: index % 2 ? 12 : -12, y: 40 }}
     animate={{ opacity: 1, scale: 1, rotate: 0, y: 0 }}
     exit={{ opacity: 0, scale: 0.3, rotate: index % 2 ? -20 : 20, y: 60, transition: { duration: 0.25 } }}
@@ -58,6 +60,7 @@ const Seat = ({ player, isHost, isMe, canKick, onKick, index }) => (
           <IconWifiOff />
         </motion.span>
       )}
+      <EmoteBubble playerId={player.id} side="top" />
     </Avatar>
 
     <div className="seat__name" title={player.name}>{player.name}</div>
@@ -67,6 +70,11 @@ const Seat = ({ player, isHost, isMe, canKick, onKick, index }) => (
       {isHost && <span className="ui-chip seat__tag seat__tag--host">Anfitrión</span>}
       {player.isBot && <span className="ui-chip seat__tag seat__tag--bot"><IconRobot /> BOT</span>}
       {!player.connected && <span className="ui-chip seat__tag seat__tag--off">Desconectado</span>}
+      {player.wins > 0 && (
+        <span className="ui-chip seat__tag seat__tag--wins" title={`${player.wins} ${player.wins === 1 ? 'victoria' : 'victorias'} en esta sala`}>
+          🏆 {player.wins}
+        </span>
+      )}
     </div>
   </motion.li>
 );
@@ -101,6 +109,7 @@ export const RoomScreen = () => {
   const [busy, setBusy] = useState(null); // 'bot' | 'start' | 'leave'
 
   useLobbyMusic();
+  useEmoteHotkeys();
 
   if (!room) return null;
 
@@ -147,7 +156,10 @@ export const RoomScreen = () => {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ type: 'spring', stiffness: 220, damping: 22 }}
         >
-          <div className="panel-tab">Jugadores {room.players.length}/{room.maxPlayers}</div>
+          <div className="panel-tab">
+            Jugadores {room.players.length}/{room.maxPlayers}
+            {room.gamesPlayed > 0 && ` · ${room.gamesPlayed} ${room.gamesPlayed === 1 ? 'partida' : 'partidas'}`}
+          </div>
 
           <ul className="seats" data-count={room.maxPlayers}>
             <AnimatePresence>
