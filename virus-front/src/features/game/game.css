@@ -1757,71 +1757,77 @@
   outline: none;
 }
 
-/* ---------------- Celular en vertical: aviso para girarlo ---------------- */
+/* ---------------- Pantalla parada (celular en vertical) ---------------- */
 
 .gt-rotate {
   display: none;
 }
 
-@media (orientation: portrait) and (max-width: 600px), (orientation: portrait) and (pointer: coarse) and (max-width: 1100px) {
-  .gt-rotate {
-    position: fixed;
-    inset: 0;
-    z-index: 500;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 22px;
-    padding: 32px;
-    text-align: center;
-    background:
-      radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.14), transparent 60%),
-      var(--background);
-    touch-action: auto;
-  }
-  .gt-rotate strong {
-    font-weight: normal;
-    font-size: 40px;
-    line-height: 1;
-    color: var(--accent);
-    text-shadow:
-      3px 3px 0 var(--strokes), -3px 3px 0 var(--strokes), 3px -3px 0 var(--strokes), -3px -3px 0 var(--strokes), 0 5px 0 var(--strokes);
-  }
-  .gt-rotate span {
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 17px;
-    line-height: 1.4;
-    max-width: 300px;
-  }
-  .gt-rotate-phone {
-    width: 74px;
-    height: 124px;
-    border: 7px solid #fff;
-    border-radius: 18px;
-    background: var(--strokes);
-    box-shadow: 0 10px 30px rgba(20, 5, 70, 0.45);
-    position: relative;
-    animation: gt-rotate-phone 2.6s cubic-bezier(.5, 0, .3, 1.4) infinite;
-  }
-  .gt-rotate-phone::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    bottom: 6px;
-    width: 18px;
-    height: 4px;
-    margin-left: -9px;
-    border-radius: 4px;
-    background: #fff;
-  }
+.gt-root.is-portrait .gt-controls {
+  bottom: auto;
 }
 
-@keyframes gt-rotate-phone {
-  0%, 25% { transform: rotate(0deg); }
-  55%, 85% { transform: rotate(-90deg); }
-  100% { transform: rotate(0deg); }
+.gt-root.is-portrait .gt-icon-btn {
+  width: 38px;
+  height: 38px;
+}
+
+.gt-root.is-portrait .emote-pop {
+  top: calc(100% + 10px);
+  bottom: auto;
+  transform-origin: top right;
+}
+
+.gt-root.is-portrait .gt-chat {
+  top: calc(var(--pad) * 2 + 38px);
+  bottom: var(--pad);
+  width: calc(100vw - var(--pad) * 2);
+}
+
+.gt-actions.is-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.gt-root.is-portrait .gt-btn {
+  font-size: 15px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.gt-root.is-portrait .gt-hint {
+  font-size: 12px;
+  max-width: calc(100vw - 20px);
+}
+
+.gt-root.is-portrait .gt-hint {
+  flex-wrap: wrap;
+  justify-content: center;
+  text-align: center;
+  row-gap: 0.2em;
+}
+
+.gt-root.is-portrait .gt-hint span {
+  display: none;
+}
+
+.gt-root.is-portrait .gt-end-emotes .emote-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 19px;
+}
+
+.gt-root.is-portrait .gt-hint.is-card span {
+  display: inline;
+}
+
+.gt-root.is-portrait .gt-toast {
+  font-size: 11px;
+}
+
+.gt-root.is-portrait .gt-banner-text {
+  font-size: 15vw;
 }
 
 /* ---------------- Celular en horizontal ---------------- */
@@ -1942,4 +1948,18 @@
 
 .gt-root .gc img {
   -webkit-touch-callout: none;
+}
+
+/* Avatares compactos (celular): las etiquetas no deben tapar la cara */
+.gt-avatar.is-compact .gt-badge-bot {
+  font-size: 7px;
+  padding: 0 3px;
+  top: -30%;
+  right: -55%;
+}
+.gt-avatar.is-compact .gt-badge-wins {
+  font-size: 9px;
+  padding: 0 3px;
+  top: -30%;
+  left: -40%;
 }

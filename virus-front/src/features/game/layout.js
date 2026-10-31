@@ -35,7 +35,93 @@ export const fitCards = (boxW, boxH, n, cols = n, gap = 8) => {
   return { w, h: Math.round(w / CARD_RATIO) };
 };
 
+// Pantalla parada (celular en vertical): rivales en rejilla arriba, la mesa en medio, mi cuerpo
+// a todo lo ancho, una fila con mi avatar y los botones, y la mano abajo. Los controles van arriba.
+const computePortraitLayout = (W, H, nOpp) => {
+  const n = clamp(nOpp, 0, 5);
+  const pad = clamp(W * 0.02, 5, 14);
+  const gap = clamp(W * 0.015, 4, 10);
+  const radius = clamp(W * 0.035, 10, 24);
+  const barH = 38;
+
+  // Mano abajo: tres cartas grandes que asoman
+  const handW = Math.round(clamp(Math.min(W * 0.27, H * 0.15), 56, 160));
+  const handCard = { w: handW, h: Math.round(handW / CARD_RATIO) };
+  const handTop = H - handCard.h * 0.8;
+  // Fila de mi avatar y los botones, justo encima de la mano
+  const actionH = clamp(H * 0.055, 38, 56);
+  const actionY = handTop - actionH - gap;
+
+  // Mi cuerpo: cinco ranuras a lo ancho
+  const hintRoom = clamp(H * 0.02, 10, 20);
+  const slotsW = W - pad * 4;
+  const card5 = fitCards(slotsW, H * 0.16, 5, 5, gap);
+  const bodyH = card5.h * (1 + STACK_EXTRA);
+  const mePanelH = hintRoom + pad * 1.5 + bodyH;
+  const meTop = actionY - mePanelH;
+  const mePanel = { x: pad, y: meTop, w: W - pad * 2, h: H - meTop + radius };
+  const me = {
+    panel: mePanel,
+    hintRoom,
+    slotsBox: { w: slotsW, h: bodyH },
+    card4: fitCards(slotsW, bodyH / (1 + STACK_EXTRA) * 1.05, 4, 4, gap * 1.6),
+    card5,
+    hand: { cx: W / 2, top: handTop, card: handCard, width: handCard.w * 2.9 },
+    avatar: {
+      size: actionH,
+      left: pad * 1.5,
+      y: actionY,
+      nameSide: 'right',
+      nameMax: Math.max(60, W * 0.32),
+    },
+    actions: { right: pad, bottom: H - actionY - actionH, row: true },
+  };
+
+  // Lo que queda arriba: rivales y centro
+  const top0 = barH + pad * 2;
+  const avail = Math.max(120, meTop - gap - top0);
+  const centerH = n ? clamp(avail * 0.3, 70, 190) : avail;
+  const oppH = avail - centerH - gap;
+
+  const cols = n <= 1 ? 1 : 2;
+  const rows = Math.ceil(n / cols);
+  const rowH = rows ? (oppH - (rows - 1) * gap) / rows : 0;
+  const seats = [];
+  for (let i = 0; i < n; i++) {
+    const row = Math.floor(i / cols);
+    // Si sobra uno en la última fila, ocupa todo el ancho
+    const alone = cols === 2 && i === n - 1 && n % 2 === 1;
+    const seatW = alone || cols === 1 ? W - pad * 2 : (W - pad * 2 - gap) / 2;
+    const x = alone || cols === 1 ? pad : pad + (i % 2) * (seatW + gap);
+    const y = top0 + row * (rowH + gap);
+    const avatar = clamp(rowH * 0.26, 22, 46);
+    const head = avatar + pad * 0.5;
+    const box = { w: seatW - pad * 2, h: rowH - head - pad * 2 };
+    seats.push({
+      pos: 'top', compact: true, x, y, w: seatW, h: rowH, peek: 0, avatar, box, head,
+      cols: 5, card4: fitCards(box.w, box.h, 4, 4, gap * 0.8), card5: fitCards(box.w, box.h, 5, 5, gap * 0.6),
+      panelW: seatW, nameMax: seatW - pad * 2 - avatar * (1.14 + COUNT_W) - pad,
+    });
+  }
+
+  const center = { x: pad, y: top0 + (n ? oppH + gap : 0), w: W - pad * 2, h: centerH };
+  // Las pilas no pasan de ~55 % del ancho: el resto es para el narrador
+  const pileH = clamp(Math.min(centerH * 0.84, (W * 0.55 - pad * 2) / (2.6 * CARD_RATIO)), 50, 200);
+  center.card = { w: Math.round(pileH * CARD_RATIO), h: Math.round(pileH) };
+  // Las pilas a la izquierda y lo que va pasando a la derecha
+  const pilesW = center.card.w * 2.6 + pad * 2;
+  const narrator = { left: pilesW + pad, top: center.y + pad, width: W - pilesW - pad * 2 };
+  center.w = Math.min(center.w, pilesW + pad);
+
+  return {
+    W, H, pad, gap, radius, sideW: 0, topH: oppH, meTop, me, center, seats,
+    positions: seats.map(() => 'top'), portrait: true, narrator,
+    controls: { top: pad, right: pad },
+  };
+};
+
 export const computeLayout = (W, H, nOpp) => {
+  if (W < H * 0.9) return computePortraitLayout(W, H, nOpp);
   const positions = SEAT_POSITIONS[clamp(nOpp, 0, 5)];
   const hasSides = positions.includes('left');
   const nTop = positions.filter((p) => p === 'top').length;

@@ -233,7 +233,7 @@ export const GameScreen = () => {
     <MotionConfig reducedMotion="user">
       <LayoutGroup>
         <div
-          className={`gt-root ${ix.card ? 'has-selection' : ''} ${ix.myTurn ? 'is-my-turn' : ''}`}
+          className={`gt-root ${ix.card ? 'has-selection' : ''} ${ix.myTurn ? 'is-my-turn' : ''} ${L.portrait ? 'is-portrait' : ''}`}
           style={{ '--radius': `${L.radius}px`, '--pad': `${L.pad}px`, '--gap': `${L.gap}px`, '--u': `${Math.min(size.w / 1920, size.h / 1080)}` }}
         >
           <div className="gt-bg" style={{ backgroundImage: `url(${doodles})` }} />
@@ -314,8 +314,8 @@ export const GameScreen = () => {
 
           {/* Mi avatar */}
           {myGp && (
-            <div className="gt-me-avatar" style={{ right: M.avatar.right, top: M.avatar.y }}>
-              <Avatar info={infoOf(me)} gp={myGp} size={M.avatar.size} timer={myGp.isTurn ? timer : null} isMe nameSide="left" nameMax={M.avatar.nameMax} />
+            <div className="gt-me-avatar" style={M.avatar.left !== undefined ? { left: M.avatar.left, top: M.avatar.y } : { right: M.avatar.right, top: M.avatar.y }}>
+              <Avatar info={infoOf(me)} gp={myGp} size={M.avatar.size} timer={myGp.isTurn ? timer : null} isMe nameSide={M.avatar.nameSide || 'left'} nameMax={M.avatar.nameMax} />
             </div>
           )}
 
@@ -333,7 +333,7 @@ export const GameScreen = () => {
           />
 
           {/* Botones de acción junto a la mano */}
-          <div className="gt-actions" style={{ left: actionsLeft, bottom: L.pad * 1.5 }}>
+          <div className={`gt-actions ${M.actions?.row ? 'is-row' : ''}`} style={M.actions ? { right: M.actions.right, bottom: M.actions.bottom, height: M.avatar.size } : { left: actionsLeft, bottom: L.pad * 1.5 }}>
             <AnimatePresence mode="popLayout">
               {ix.myTurn && !ix.discardMode && !ix.card && view.hand.length > 0 && (
                 <motion.button key="discard" type="button" className="gt-btn gt-btn-ghost" onClick={ix.toggleDiscard} {...btnAnim}>
@@ -374,11 +374,11 @@ export const GameScreen = () => {
             </AnimatePresence>
           </div>
 
-          <Narrator style={{ left: L.center.x + L.pad, top: L.center.y, width: Math.max(200, (L.center.w - L.center.card.w * 2.5) / 2 - L.pad * 2) }} />
+          <Narrator style={L.narrator || { left: L.center.x + L.pad, top: L.center.y, width: Math.max(200, (L.center.w - L.center.card.w * 2.5) / 2 - L.pad * 2) }} />
           <ErrorToasts style={{ left: size.w / 2, bottom: handCard.h * 0.95 + L.pad }} />
 
           {/* Controles: sonido, chat, salir */}
-          <div className="gt-controls">
+          <div className="gt-controls" style={L.controls}>
             <button
               type="button"
               className={`gt-icon-btn ${muted ? 'is-off' : ''}`}
@@ -398,13 +398,6 @@ export const GameScreen = () => {
           <FxLayer />
           <CardTip view={view} me={me} />
           <TurnBanner />
-
-          {/* Celular en vertical: la mesa necesita la pantalla acostada (lo muestra el CSS) */}
-          <div className="gt-rotate" role="status">
-            <div className="gt-rotate-phone" aria-hidden />
-            <strong>Gira tu teléfono</strong>
-            <span>La mesa de Roña se juega con la pantalla en horizontal</span>
-          </div>
 
           <ConfirmDialog
             open={ix.confirmGlove}

@@ -107,7 +107,7 @@ export const Seat = memo(function Seat({ seat, gp, info, hl, picked, hover, onSl
 
   if (seat.pos === 'top') {
     return (
-      <div className={classes} style={{ left: seat.x, top: 0, width: seat.w, height: seat.h, '--pc': info?.color || '#ffae00' }}>
+      <div className={classes} style={{ left: seat.x, top: seat.y || 0, width: seat.w, height: seat.h, '--pc': info?.color || '#ffae00' }}>
         <div className="gt-seat-panel" style={{ width: seat.panelW, height: seat.h }} {...panelProps}>
           {seat.compact
             ? <HandCount playerId={gp.id} count={gp.handCount} size={seat.avatar} />
