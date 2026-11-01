@@ -16,8 +16,8 @@ import {
 } from './fx';
 import { hideBanner, narrate, showBanner } from './Overlays';
 
-const ORGAN_NAME = { red: 'corazón', green: 'estómago', blue: 'cerebro', yellow: 'hueso', multi: 'órgano comodín' };
-const ORGAN_ART = { red: 'un corazón', green: 'un estómago', blue: 'un cerebro', yellow: 'un hueso', multi: 'el órgano comodín' };
+const ORGAN_NAME = { red: 'corazón', green: 'pulmón', blue: 'cerebro', yellow: 'hueso', multi: 'órgano comodín' };
+const ORGAN_ART = { red: 'un corazón', green: 'un pulmón', blue: 'un cerebro', yellow: 'un hueso', multi: 'el órgano comodín' };
 
 // ---------- Narración ----------
 

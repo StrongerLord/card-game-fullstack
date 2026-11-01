@@ -19,7 +19,7 @@ Si el código y este documento no coinciden, el error está en el código.
 | treatment `glove` (Guante de látex) | — | 1 | `starDrop` |
 | treatment `medicalError` (Error médico) | — | 1 | `starChangeAll` |
 
-Colores: red = corazón, green = estómago/pulmones, blue = cerebro, yellow = hueso. `multi` = comodín.
+Colores: red = corazón, green = pulmón, blue = cerebro, yellow = hueso. `multi` = comodín.
 
 Cada carta tiene un `id` único (`c01`…`c68`), que es estable durante la partida.
 

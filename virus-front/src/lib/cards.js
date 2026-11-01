@@ -30,7 +30,8 @@ export const cardImage = (card, size = 'big') => {
 // en la revelación de un tratamiento (FxLayer), que pide cardImage(card, 'big') aparte.
 export const BACK_IMAGE = cardImage(null, 'sm');
 
-export const COLOR_NAMES = { red: 'corazón', green: 'estómago', blue: 'cerebro', yellow: 'hueso', multi: 'comodín' };
+export const COLOR_NAMES = { red: 'corazón', green: 'pulmón', blue: 'cerebro', yellow: 'hueso', multi: 'comodín' };
+const COLOR_PLURALS = { red: 'corazones', green: 'pulmones', blue: 'cerebros', yellow: 'huesos' };
 export const COLOR_HEX = { red: '#ff4d4d', green: '#20c040', blue: '#1e90ff', yellow: '#ffcc00', multi: '#c070ff' };
 const TREATMENT_NAMES = {
   transplant: 'Trasplante',
@@ -72,7 +73,7 @@ export const cardHelp = (card) => {
   if (card.kind === 'organ') {
     return multi
       ? 'Ponlo en tu cuerpo: cuenta como un color más para ganar. Le pega cualquier roña y lo cura cualquier medicina.'
-      : `Ponlo en tu cuerpo. Gana quien junte 4 órganos de distinto color sin roña. No puedes tener dos ${color}s.`;
+      : `Ponlo en tu cuerpo. Gana quien junte 4 órganos de distinto color sin roña. No puedes tener dos ${COLOR_PLURALS[card.color]}.`;
   }
   const where = multi ? 'cualquier órgano' : `un ${color} (o un órgano comodín)`;
   if (card.kind === 'virus') {
