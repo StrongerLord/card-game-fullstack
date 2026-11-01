@@ -24,6 +24,7 @@ export class SessionStore {
     this.byToken = new Map();
     this.byPlayerId = new Map();
     this.bySocketId = new Map();
+    this.byAccount = new Map(); // accountId -> Set<session> (una cuenta puede estar en varios dispositivos)
   }
 
   create(profile, { ip = '' } = {}) {
@@ -37,6 +38,8 @@ export class SessionStore {
       graceTimer: null,
       lastSeen: Date.now(),
       ip,
+      accountId: null,      // cuenta de Google ligada (null = invitado)
+      authToken: null,      // token de "recuérdame" con el que se ligó (para auth:logout)
       // Ventanas de rate limit: viven en la sesión (no en la sala) para que salir y volver no las reinicie
       chatTimes: [],
       joinTimes: [],
@@ -49,6 +52,22 @@ export class SessionStore {
   getByToken(token) { return (token && this.byToken.get(token)) || null; }
   getById(playerId) { return this.byPlayerId.get(playerId) || null; }
   getBySocket(socketId) { return this.bySocketId.get(socketId) || null; }
+  ofAccount(accountId) { return [...(this.byAccount.get(accountId) || [])]; }
+
+  // Liga la sesión a una cuenta (o la suelta con null)
+  bindAccount(session, accountId, authToken = null) {
+    if (session.accountId) {
+      const set = this.byAccount.get(session.accountId);
+      set?.delete(session);
+      if (set && !set.size) this.byAccount.delete(session.accountId);
+    }
+    session.accountId = accountId;
+    session.authToken = accountId ? authToken : null;
+    if (accountId) {
+      if (!this.byAccount.has(accountId)) this.byAccount.set(accountId, new Set());
+      this.byAccount.get(accountId).add(session);
+    }
+  }
 
   // Asocia el socket a la sesión. Devuelve el socketId anterior si había otro (pestaña duplicada).
   attach(session, socketId) {
@@ -98,6 +117,7 @@ export class SessionStore {
       if (!s.connected && !s.roomId && now - s.lastSeen > maxIdleMs) {
         this.byToken.delete(s.token);
         this.byPlayerId.delete(s.playerId);
+        if (s.accountId) this.bindAccount(s, null);
         n++;
       }
     }

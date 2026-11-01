@@ -114,7 +114,8 @@ CORS abierto a cualquier origen en desarrollo, o al que diga `CLIENT_ORIGIN`.
 Todos los eventos cliente→servidor usan **ack**: `socket.emit(ev, payload, (res) => …)`, con `res = { ok: true, ...data } | { ok: false, error: { code, message } }`.
 
 ### Sesión (para que una recarga no saque al jugador)
-- `session:hello` `{ token?: string, profile?: { name, avatar, color } }` → ack `{ ok, token, playerId, profile, roomId|null }`.
+- `session:hello` `{ token?: string, profile?: { name, avatar, color }, auth?: string }` → ack `{ ok, token, playerId, profile, roomId|null, account: Account|null, auth: { googleClientId: string|null, devFake: boolean } }`.
+  `auth` es el token de cuenta (ver sección 5); `account` y `auth` también se explican ahí.
   Si el `token` es conocido, la sesión se recupera (mismo `playerId`, misma sala y mismo asiento en la partida) y el servidor reenvía `room:state` y `game:state`.
   Un socket tiene una sola sesión: `hello` sin token, o con uno desconocido, en un socket que ya tiene sesión devuelve esa misma sesión.
   El cliente guarda `token` en `localStorage['rona.token']`.
@@ -160,6 +161,7 @@ Tiempos:
 
 ### HTTP
 - `GET /health` → `{ ok: true }`
+- `GET /config` → `{ googleClientId: string|null }` (lo mismo que anuncia el ack de `session:hello`)
 - `GET /rooms` → `RoomSummary[]` (se conserva por compatibilidad)
 
 ## 3. Cliente (`virus-front`)
@@ -193,3 +195,65 @@ Cliente:
 - `useStore.hello` suelta la sala local si el servidor responde `roomId: null` (se reinició o pasó la gracia).
 - `updateProfile` sólo guarda el perfil (store y `localStorage['rona.profile']`) cuando el servidor lo acepta.
 - Los lotes de `game:events` con `seq` menor o igual al último encolado se ignoran.
+
+## 5. Cuentas de Google, estadísticas y amigos
+
+Opcional: sin `GOOGLE_CLIENT_ID` en el servidor no hay botón de Google y todos juegan como invitados, igual que
+antes. Los invitados pueden hacer todo menos tener amigos y estadísticas guardadas.
+
+Persistencia: SQLite con `node:sqlite` (Node ≥ 22.13), en `DATA_DIR/rona.db` (`./data` en local, `/data` en Docker
+con el volumen `rona-data`). Tablas: `accounts` (sub de Google, email, perfil, código de amigo, partidas jugadas y
+ganadas), `auth_tokens` (sólo el hash SHA-256), `friendships` (una fila por pareja) y `friend_requests`.
+
+### Inicio de sesión
+- El cliente carga Google Identity Services (`https://accounts.google.com/gsi/client`) si el ack de `session:hello`
+  trae `auth.googleClientId`, pinta el botón y manda el ID token tal cual:
+- `auth:google` `{ credential }` → ack `{ ok, authToken, created, account: Account, profile }`. El servidor verifica el
+  token con `google-auth-library` (`audience = GOOGLE_CLIENT_ID`) y busca o crea la cuenta por el `sub` de Google.
+  Cuenta nueva: se queda con el perfil que el jugador ya traía; si era uno al azar (nunca eligió nombre), con su
+  nombre de Google (recortado a 16). Cuenta existente: **el perfil guardado en la cuenta manda** y reemplaza al
+  local (así se recupera en otro dispositivo). Errores: `BAD_PAYLOAD`, `AUTH_DISABLED` (no hay `GOOGLE_CLIENT_ID`),
+  `AUTH_FAILED` (Google no lo validó), `RATE_LIMITED` (6 intentos por sesión por minuto).
+- `authToken` es un token propio (no el de Google), de "recuérdame": el cliente lo guarda en
+  `localStorage['rona.auth']` y lo manda como `auth` en cada `session:hello`; así la cuenta sigue ligada tras una
+  recarga o un reinicio del servidor sin volver a pasar por Google. Caduca a los 180 días sin uso; como mucho 10
+  por cuenta (se borran los más viejos). Si ya no vale, el ack trae `account: null` y el cliente lo borra.
+- `auth:logout` → ack `{ ok, profile }`: revoca ese token y la sesión vuelve a invitado (conserva el perfil actual).
+- Con `AUTH_DEV_FAKE=1` (y nunca si `NODE_ENV=production`) se aceptan además credenciales `dev:<sub>:<nombre>`
+  (`sub` de `[A-Za-z0-9_-]`, hasta 64): son las que usan los tests y las pruebas e2e. En desarrollo:
+  `window.__ronaStore.getState().loginGoogle('dev:ana:Ana')`.
+- `Account = { id, email, friendCode, stats: { played, won } }`: **sólo se le manda al dueño**. Nadie más ve el
+  email: a los demás sólo les llega `{ id, name, avatar, color }`.
+- `profile:update` con cuenta guarda el perfil en la cuenta; los otros dispositivos conectados de la misma cuenta
+  reciben `profile:update` (servidor → cliente) `{ name, avatar, color }`.
+
+### Estadísticas
+- Al empezar una partida se anotan las cuentas de los humanos sentados; al terminar, cada una suma una jugada y la
+  del ganador una ganada (aunque alguien haya salido a media partida o cerrado sesión: abandonar cuenta como
+  perdida). A esas cuentas les llega `account:update` `Account` con las cifras nuevas.
+
+### Amigos (sólo con cuenta; si no, `NOT_LOGGED_IN`)
+- Cada cuenta tiene un código de amigo de 6 caracteres de `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (sin 0/O ni 1/I/L).
+  El servidor acepta minúsculas, espacios y guiones.
+- `friends:list` → ack `{ ok, friends: Friend[], incoming: Request[], outgoing: Request[] }`.
+  `Friend = { id, name, avatar, color, stats: { played, won }, status: 'online'|'playing'|'offline', room: { id, name, joinable }|null }`
+  (`online` = conectado en el lobby o en una sala de espera; `playing` = en una sala con partida en curso o
+  terminada; `joinable` = la sala está en espera y con lugar). `Request = { id, ts, from|to: { id, name, avatar, color } }`.
+- `friends:request` `{ code }` → ack `{ ok, status: 'sent'|'accepted', friend }`. Si el otro ya te había mandado
+  solicitud, quedan como amigos directamente (`accepted`); repetir una solicitud ya enviada no hace nada. Errores:
+  `FRIEND_NOT_FOUND`, `FRIEND_SELF`, `ALREADY_FRIENDS`, `LIMIT_REACHED` (100 amigos o 30 solicitudes sin respuesta),
+  `RATE_LIMITED` (10 por sesión por minuto).
+- `friends:respond` `{ requestId, accept: boolean }` → ack. Error: `REQUEST_NOT_FOUND` (también si no es para ti).
+- `friends:remove` `{ friendId }` → ack. Error: `FRIEND_NOT_FOUND`.
+- `friends:invite` `{ friendId }` → ack: invita a tu sala actual. Hace falta estar en una sala en espera con lugar
+  (`NOT_IN_ROOM`, `NOT_IN_LOBBY`, `ROOM_FULL`), que sea tu amigo (`NOT_FRIENDS`), que esté conectado
+  (`FRIEND_OFFLINE`) y que no esté ya en tu sala (`ALREADY_IN_ROOM`). Una invitación cada 5 s al mismo amigo y 12 por
+  minuto (`RATE_LIMITED`).
+
+Servidor → cliente:
+- `friends:update` `{ friends, incoming, outgoing }` (lo mismo que `friends:list`): a todos los dispositivos
+  conectados de la cuenta cuando cambia algo de su lista (solicitud nueva, aceptada, rechazada, amistad quitada) o el
+  estado de un amigo (se conecta o desconecta, entra o sale de una sala, empieza o termina su partida, su sala se
+  llena…). Los cambios se agrupan en un solo envío por vuelta del bucle de eventos.
+- `friends:invited` `{ from: { id, name, avatar, color }, roomId, roomName }`: el cliente muestra un aviso con
+  "Unirse" (si está en otra sala de espera, sale de ella primero; a media partida no se cambia).

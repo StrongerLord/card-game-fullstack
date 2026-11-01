@@ -3,6 +3,8 @@ import { socket, request } from '../net/socket';
 
 const TOKEN_KEY = 'rona.token';
 const PROFILE_KEY = 'rona.profile';
+// Token de "recuérdame" de la cuenta de Google (lo emite nuestro servidor, no es el de Google)
+const AUTH_KEY = 'rona.auth';
 const CHAT_MAX = 200;
 
 const savedProfile = () => {
@@ -14,6 +16,14 @@ const saveProfile = (profile) => {
 
 // Lo que se limpia al salir de una sala
 const NO_ROOM = { room: null, chat: [], game: null, eventQueue: [], emotes: {} };
+// Lo que se limpia al cerrar sesión (o si el token de cuenta ya no vale)
+const NO_FRIENDS = { friends: [], incoming: [], outgoing: [] };
+const NO_ACCOUNT = { account: null, friends: NO_FRIENDS };
+const storage = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } },
+  del: (k) => { try { localStorage.removeItem(k); } catch { /* sin almacenamiento */ } },
+};
 // Cuánto se queda un emote encima del avatar (más si trae frase)
 const EMOTE_MS = 2600;
 const EMOTE_SAY_MS = 3600;
@@ -30,18 +40,29 @@ export const useStore = create((set, get) => ({
   game: null,             // PlayerView & { turnDeadline, turnMs }
   eventQueue: [],         // lotes { seq, events } pendientes de animar
   emotes: {},             // playerId -> { id, emote, say? } que se está mostrando
+  authConfig: { googleClientId: null, devFake: false }, // lo anuncia el servidor en el hello
+  account: null,          // { id, email, friendCode, stats: { played, won } } si entró con Google
+  friends: NO_FRIENDS,    // { friends, incoming, outgoing } (friends:update)
+  friendsOpen: false,     // el modal de amigos (se abre también desde los avisos)
+  setFriendsOpen: (friendsOpen) => set({ friendsOpen }),
 
   hello: async () => {
+    const auth = storage.get(AUTH_KEY) || undefined;
     const res = await request('session:hello', {
       token: localStorage.getItem(TOKEN_KEY) || undefined,
       profile: get().profile.name ? get().profile : undefined,
+      auth,
     });
     localStorage.setItem(TOKEN_KEY, res.token);
+    // El token de cuenta ya no vale (cerró sesión en otro lado o caducó): se queda de invitado
+    if (auth && !res.account) storage.del(AUTH_KEY);
     // Si el servidor ya no nos tiene en ninguna sala (se reinició o pasó la gracia), se suelta la vieja
     set({
       session: { token: res.token, playerId: res.playerId },
       profile: res.profile,
       replaced: false,
+      authConfig: { googleClientId: res.auth?.googleClientId || null, devFake: !!res.auth?.devFake },
+      ...(res.account ? { account: res.account } : NO_ACCOUNT),
       ...(res.roomId ? {} : NO_ROOM),
     });
     if (res.profile?.name) saveProfile(res.profile);
@@ -55,6 +76,46 @@ export const useStore = create((set, get) => ({
     saveProfile(res.profile);
     set({ profile: res.profile });
     return res.profile;
+  },
+
+  // ---------- cuenta (Google) ----------
+
+  // `credential` es el ID token del botón de Google (o "dev:<sub>:<nombre>" con AUTH_DEV_FAKE en el servidor)
+  loginGoogle: async (credential) => {
+    const res = await request('auth:google', { credential });
+    storage.set(AUTH_KEY, res.authToken);
+    saveProfile(res.profile);
+    set({ account: res.account, profile: res.profile });
+    return res;
+  },
+
+  logout: async () => {
+    try {
+      await request('auth:logout');
+    } finally {
+      storage.del(AUTH_KEY);
+      set(NO_ACCOUNT);
+    }
+  },
+
+  // ---------- amigos ----------
+
+  refreshFriends: async () => {
+    const res = await request('friends:list');
+    set({ friends: { friends: res.friends, incoming: res.incoming, outgoing: res.outgoing } });
+  },
+  requestFriend: (code) => request('friends:request', { code }),
+  respondFriend: (requestId, accept) => request('friends:respond', { requestId, accept }),
+  removeFriend: (friendId) => request('friends:remove', { friendId }),
+  inviteFriend: (friendId) => request('friends:invite', { friendId }),
+
+  // Unirse a la sala de un amigo (desde su fila o desde la invitación): si estás en otra sala de espera, sales primero
+  joinFriendRoom: async (roomId) => {
+    const { room } = get();
+    if (room?.id === roomId) return;
+    if (room && room.status !== 'lobby') throw { code: 'IN_GAME', message: 'Termina tu partida antes de cambiarte de sala' };
+    if (room) await get().leaveRoom();
+    await get().joinRoom(roomId);
   },
 
   refreshRooms: async () => {
@@ -99,6 +160,16 @@ socket.on('connect', () => {
 socket.on('disconnect', () => useStore.setState({ connected: false }));
 socket.on('session:replaced', () => useStore.setState({ replaced: true }));
 socket.on('rooms:update', (rooms) => useStore.setState({ rooms }));
+// Cuenta: estadísticas nuevas al terminar una partida y perfil cambiado desde otro dispositivo
+socket.on('account:update', (account) => useStore.setState((s) => (s.account ? { account: { ...s.account, ...account } } : {})));
+socket.on('profile:update', (profile) => {
+  if (!profile?.name) return;
+  saveProfile(profile);
+  useStore.setState({ profile });
+});
+socket.on('friends:update', (f) => useStore.setState({
+  friends: { friends: f?.friends || [], incoming: f?.incoming || [], outgoing: f?.outgoing || [] },
+}));
 socket.on('room:state', (room) => useStore.setState((s) => {
   if (!room) return NO_ROOM;
   // Otra sala distinta (o de vuelta al lobby tras la revancha): no arrastrar la partida vieja

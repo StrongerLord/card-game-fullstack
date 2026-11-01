@@ -59,10 +59,33 @@ de la red local basta con abrir `http://<ip-de-tu-pc>:5173`.
 | `MAX_CONNECTIONS_PER_IP` | `20` | sockets abiertos a la vez por IP (`0` = sin tope) |
 | `SESSIONS_PER_IP_PER_MIN` | `20` | sesiones nuevas por minuto por IP (`0` = sin tope) |
 | `MAX_ROOMS_PER_IP` | `8` | salas abiertas creadas desde una IP (`0` = sin tope) |
+| `GOOGLE_CLIENT_ID` | vacío | ID de cliente OAuth (Google Identity Services). Vacío = sin botón de Google: todos juegan como invitados. Ver "Cuentas de Google" |
+| `DATA_DIR` | `./data` | carpeta de la base SQLite (`rona.db`) con cuentas, estadísticas y amigos; en Docker `/data` (volumen `rona-data`) |
+| `AUTH_DEV_FAKE` | apagado | `1` acepta credenciales de prueba `dev:<sub>:<nombre>` en vez de Google (tests y e2e). Se ignora con `NODE_ENV=production` |
 | `TRUST_PROXY` | apagado | número de proxies propios delante (`1` con el nginx de Docker): toma la IP de `X-Forwarded-For`, la N-ésima desde la derecha. Sólo detrás de un proxy propio; sin él, todos cuentan como la IP del proxy |
 
 Los topes por IP suponen que no hay muchos jugadores detrás de la misma IP (una escuela, una red con NAT);
 en ese caso súbelos. Ver `docs/PROTOCOL.md` ("Límites contra abusos").
+
+### Cuentas de Google
+
+Opcionales: con cuenta, el perfil (nombre, avatar, color) se guarda y se recupera en otro dispositivo, se cuentan
+las partidas jugadas y ganadas, y se pueden agregar amigos por código e invitarlos a tu sala. Sin cuenta se juega
+igual que siempre. Para activarlas:
+
+1. En [Google Cloud Console](https://console.cloud.google.com/) → APIs y servicios → Pantalla de consentimiento de
+   OAuth: tipo "Externo", nombre "Roña" y tu correo de soporte (sólo se piden los permisos básicos: `openid`,
+   `email`, `profile`; no hace falta verificación). Publícala ("En producción") para que entre cualquiera.
+2. Credenciales → Crear credenciales → ID de cliente de OAuth → "Aplicación web". En **Orígenes de JavaScript
+   autorizados** agrega `https://rona.1200602.xyz` y `http://localhost:5173`; para probar el Docker local, también
+   `http://localhost:8090` (y ábrelo por ese nombre: Google no acepta IPs). No hacen falta URIs de redirección ni
+   el secreto del cliente.
+3. Copia el "ID de cliente" (`…apps.googleusercontent.com`) en `GOOGLE_CLIENT_ID`: en `.env` para Docker, o
+   `GOOGLE_CLIENT_ID=… npm run dev` en local. El cliente lo recibe del servidor; no hay que recompilar el front.
+
+Sin Google a la mano: `AUTH_DEV_FAKE=1 npm run dev` y, en la consola del navegador,
+`__ronaStore.getState().loginGoogle('dev:ana:Ana')`. `node e2e/accounts-shots.mjs` recorre todo el flujo (ver
+"Otras pruebas y capturas").
 
 ### Modos de demostración del cliente (sólo en desarrollo, sin servidor)
 
@@ -87,10 +110,10 @@ define `CLIENT_ORIGIN` con el dominio del cliente. La forma armada de todo esto 
 
 ```
 docker-compose.yml        rona-server + rona-web + cloudflared en la red `rona`
-virus-back/Dockerfile     node:22-alpine, sólo dependencias de producción, usuario `node`, HEALTHCHECK a /health
+virus-back/Dockerfile     node:22.15-alpine (node:sqlite), sólo dependencias de producción, usuario `node`, /data, HEALTHCHECK a /health
 virus-front/Dockerfile    build con vite (node:22-alpine) → nginx:alpine
 virus-front/nginx/default.conf   estáticos, fallback SPA, gzip, caché de /assets/, proxy de /socket.io/ y /health
-.env.example              TUNNEL_TOKEN y variables del servidor (copiar a .env, que no se versiona)
+.env.example              TUNNEL_TOKEN, GOOGLE_CLIENT_ID y variables del servidor (copiar a .env, que no se versiona)
 ```
 
 Los dos Dockerfile se construyen con la **raíz del repo** como contexto (el servidor importa `../../shared`
@@ -114,7 +137,7 @@ contenedor nginx y el tope de 20 conexiones se agotaría con 20 jugadores en tot
 
    ```bash
    git clone -b remake <repo> /home/server1/rona && cd /home/server1/rona
-   cp .env.example .env && nano .env          # pega TUNNEL_TOKEN; TRUST_PROXY=1 se queda
+   cp .env.example .env && nano .env          # pega TUNNEL_TOKEN (y GOOGLE_CLIENT_ID); TRUST_PROXY=1 se queda
    docker compose up -d --build
    docker compose ps                           # los tres en (healthy)
    curl -s http://127.0.0.1:8090/health        # {"ok":true}
@@ -129,11 +152,14 @@ Si Docker viene de snap, el proyecto debe vivir dentro de `/home` (snap no ve ot
 ```bash
 git pull && docker compose up -d --build      # reconstruye y recrea sólo lo que cambió
 docker compose logs -f rona-server rona-web    # nginx registra la IP real del jugador
-docker compose down                            # para todo (no hay datos persistentes: salas y sesiones viven en memoria)
+docker compose down                            # para todo; el volumen rona-data (cuentas y amigos) se conserva
+docker run --rm -v rona-data:/data -v "$PWD":/backup alpine tar czf /backup/rona-data.tgz -C /data .   # respaldo de la base
 ```
 
-Reiniciar `rona-server` corta las partidas en curso (el estado vive en memoria); los clientes se reconectan
-solos pero vuelven al inicio.
+Reiniciar `rona-server` corta las partidas en curso (salas y sesiones viven en memoria); los clientes se reconectan
+solos pero vuelven al inicio. Las cuentas, estadísticas y amigos sí persisten: viven en SQLite en el volumen
+`rona-data` (`/data/rona.db`), y quien había entrado con Google sigue con su cuenta sin volver a iniciar sesión.
+No borres el volumen (`docker compose down -v`) si no quieres perderlas.
 
 Sin token (en tu PC), levanta sólo el juego y pruébalo contra nginx:
 
@@ -151,7 +177,7 @@ soak abre todas sus sesiones desde la misma IP; en el servidor salen de `.env`.)
 
 ```bash
 cd shared      && npm test     # motor: 85 tests (reglas, tratamientos, fuzz de 300 partidas)
-cd virus-back  && npm test     # servidor: 28 tests de integración por Socket.IO (puertos aleatorios), incl. endurecimiento
+cd virus-back  && npm test     # servidor: 50 tests de integración por Socket.IO (puertos aleatorios), incl. endurecimiento, cuentas y amigos
 cd virus-front && npm test && npm run lint && npm run build   # 4 tests del acomodo de la mesa
 ```
 
@@ -190,6 +216,11 @@ Falla si aparece cualquier error en la consola o una excepción en la página.
 Las capturas quedan en `e2e/shots/e2e-*.png` (la carpeta no se sube al repo).
 
 ### Otras pruebas y capturas
+
+- `node e2e/accounts-shots.mjs` (servidor con `AUTH_DEV_FAKE=1`; `E2E_URL`, por defecto `http://localhost:5273`):
+  cuentas y amigos de punta a punta con credenciales de prueba, Ana en escritorio y Beto en vertical (390x844):
+  entrar, agregar por código, aceptar desde el aviso, invitar, unirse desde el toast, estadísticas tras la partida,
+  recarga y cerrar sesión. Capturas en `e2e/shots/acc-*.png`. Con `GOOGLE_CLIENT_ID` (aunque sea falso) se ve el botón.
 
 - `node e2e/front-check.mjs` (con vite corriendo; `E2E_URL`, por defecto `http://localhost:5174`): 45
   comprobaciones visuales y de accesibilidad de la mesa (nombres que caben, celular en horizontal, aviso de

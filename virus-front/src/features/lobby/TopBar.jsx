@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import logo from '../../assets/roña.png';
 import { HowToPlayButton } from './HowToPlay';
 import { MusicToggle } from './music';
+import { FriendsButton } from '../account/FriendsPanel';
 
 // Barra superior del lobby y la sala: logo, un título opcional y botones
 export const TopBar = ({ title, subtitle, children }) => (
@@ -26,6 +27,7 @@ export const TopBar = ({ title, subtitle, children }) => (
     )}
     <div className="topbar__actions">
       {children}
+      <FriendsButton />
       <HowToPlayButton compact />
       <MusicToggle />
     </div>

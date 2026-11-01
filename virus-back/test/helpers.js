@@ -4,7 +4,7 @@ import { io as connect } from 'socket.io-client';
 import { createServer } from '../src/index.js';
 
 export async function startServer(opts = {}) {
-  const server = createServer({ log: false, ...opts });
+  const server = createServer({ log: false, dbFile: ':memory:', ...opts });
   const port = await server.listen(0, '127.0.0.1');
   const url = `http://127.0.0.1:${port}`;
   const clients = [];

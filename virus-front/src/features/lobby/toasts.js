@@ -16,6 +16,14 @@ const ERROR_TEXT = {
   NO_SESSION: 'Todavía no hay conexión con el servidor',
   SERVER_FULL: 'Hay demasiadas salas abiertas, intenta más tarde',
   PLAYER_NOT_FOUND: 'Ese jugador ya no está en la sala',
+  NOT_LOGGED_IN: 'Entra con Google para tener amigos',
+  AUTH_FAILED: 'Google no validó tu inicio de sesión, inténtalo otra vez',
+  AUTH_DISABLED: 'El inicio de sesión con Google no está disponible',
+  FRIEND_NOT_FOUND: 'No hay nadie con ese código',
+  FRIEND_SELF: 'Ese es tu propio código',
+  FRIEND_OFFLINE: 'Tu amig@ no está conectad@',
+  NOT_FRIENDS: 'Sólo puedes invitar a tus amigos',
+  REQUEST_NOT_FOUND: 'Esa solicitud ya no existe',
 };
 
 export const errorText = (err) =>
@@ -26,15 +34,16 @@ let nextId = 1;
 // Pila de avisos flotantes (los pinta <Toaster />)
 export const useToasts = create((set, get) => ({
   toasts: [],
-  push: (text, kind = 'info', ms = 3800) => {
+  // `action` opcional: { label, onClick } pinta un botón en el aviso (p. ej. "Unirse" en una invitación)
+  push: (text, kind = 'info', ms = 3800, action = null) => {
     const id = nextId++;
     // No repetir el mismo aviso si ya está en pantalla
     if (get().toasts.some((t) => t.text === text)) return;
-    set((s) => ({ toasts: [...s.toasts.slice(-3), { id, text, kind }] }));
+    set((s) => ({ toasts: [...s.toasts.slice(-3), { id, text, kind, action }] }));
     setTimeout(() => get().dismiss(id), ms);
   },
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
-export const toast = (text, kind) => useToasts.getState().push(text, kind);
+export const toast = (text, kind, ms, action) => useToasts.getState().push(text, kind, ms, action);
 export const toastError = (err) => toast(errorText(err), 'error');

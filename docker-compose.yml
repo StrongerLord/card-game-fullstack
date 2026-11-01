@@ -25,6 +25,12 @@ services:
       BOT_MIN_MS: ${BOT_MIN_MS:-1800}
       BOT_MAX_MS: ${BOT_MAX_MS:-3200}
       LOG: ${LOG:-1}
+      # Inicio de sesión con Google (vacío = sin botón; todos juegan como invitados)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      DATA_DIR: /data
+    # Cuentas, estadísticas y amigos (SQLite): sobreviven a reconstruir o recrear el contenedor
+    volumes:
+      - rona-data:/data
     # Sin puertos publicados: sólo lo alcanza rona-web por la red interna
     networks: [rona]
     healthcheck:
@@ -82,3 +88,7 @@ services:
 networks:
   rona:
     name: rona
+
+volumes:
+  rona-data:
+    name: rona-data

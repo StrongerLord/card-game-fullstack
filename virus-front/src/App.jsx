@@ -6,6 +6,7 @@ import { RoomScreen } from './features/lobby/RoomScreen';
 import { GameScreen } from './features/game/GameScreen';
 import { ConnectionBanner } from './features/lobby/ConnectionBanner';
 import { Toaster } from './features/lobby/Toaster';
+import './features/account/invites';
 
 // Enrutado por estado: inicio → lobby → sala → partida
 const Screen = () => {

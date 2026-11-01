@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useToasts } from './toasts';
-import { IconCheck, IconClose, IconWarning, IconSparkle } from './icons';
+import { IconCheck, IconClose, IconWarning, IconSparkle, IconUsers } from './icons';
 
-const ICONS = { error: IconWarning, success: IconCheck, info: IconSparkle };
+const ICONS = { error: IconWarning, success: IconCheck, info: IconSparkle, invite: IconUsers };
 
 // Avisos animados arriba al centro
 export const Toaster = () => {
@@ -26,6 +26,15 @@ export const Toaster = () => {
             >
               <span className="toast__icon"><Icon /></span>
               <span className="toast__text">{t.text}</span>
+              {t.action && (
+                <motion.button
+                  className="ui-btn ui-btn--success ui-btn--sm toast__action"
+                  whileTap={{ scale: 0.92 }}
+                  onClick={() => { dismiss(t.id); t.action.onClick(); }}
+                >
+                  {t.action.label}
+                </motion.button>
+              )}
               <button className="toast__close" onClick={() => dismiss(t.id)} aria-label="Cerrar aviso">
                 <IconClose />
               </button>

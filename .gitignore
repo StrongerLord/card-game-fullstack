@@ -7,3 +7,6 @@ e2e/video/
 
 # Secretos del despliegue (TUNNEL_TOKEN): nunca al repo
 .env
+
+# Base de cuentas y amigos (SQLite, DATA_DIR): nunca al repo
+data/

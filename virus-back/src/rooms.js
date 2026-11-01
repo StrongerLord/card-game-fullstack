@@ -53,8 +53,10 @@ const LEAVE_VERBS = { leave: 'salió', kick: 'fue expulsado', timeout: 'se desco
 const channel = (roomId) => `room:${roomId}`;
 
 export class RoomManager {
-  constructor({ io, sessions, timing, log, limits = {} }) {
+  constructor({ io, sessions, timing, log, limits = {}, friends = null, accounts = null }) {
     this.limits = limits;
+    this.friends = friends;   // FriendService: avisa a los amigos cuando cambia tu sala o su estado
+    this.accounts = accounts; // AccountStore: estadísticas de las cuentas al terminar cada partida
     this.io = io;
     this.sessions = sessions;
     this.timing = timing;
@@ -130,6 +132,7 @@ export class RoomManager {
 
   broadcastRoom(room) {
     this.io.to(channel(room.id)).emit('room:state', this.roomState(room));
+    this.friends?.markRoom(room);
   }
 
   // rooms:update se agrupa: varios cambios seguidos producen un solo envío
@@ -211,6 +214,7 @@ export class RoomManager {
     this.log.info(`Sala ${room.id} "${room.name}" creada por ${session.profile.name}`);
     this.system(room, `${session.profile.name} creó la sala`);
     this.syncSocket(room, session, { withHistory: true });
+    this.friends?.markSession(session);
     this.markListDirty();
     return { roomId: room.id };
   }
@@ -264,6 +268,7 @@ export class RoomManager {
     const socket = this.socketOf(session);
     if (socket) socket.leave(channel(room.id));
     this.emitTo(session.playerId, 'room:state', null);
+    this.friends?.markSession(session);
     this.removeFromRoom(room, session.playerId, reason);
     return {};
   }
@@ -302,6 +307,7 @@ export class RoomManager {
       if (p.isBot) continue;
       const s = this.sessions.getById(p.id);
       if (s && s.roomId === room.id) s.roomId = null;
+      this.friends?.markSession(s);
     }
     this.io.in(channel(room.id)).socketsLeave(channel(room.id));
     this.log.info(`Sala ${room.id} borrada (sin humanos)`);
@@ -483,6 +489,12 @@ export class RoomManager {
       },
     });
     room.runner = runner;
+    // Cuentas de quienes empiezan la partida: cuentan para las estadísticas aunque salgan o cierren sesión
+    room.accountsInGame = new Map();
+    for (const x of seats) {
+      const s = x.isBot ? null : this.sessions.getById(x.id);
+      if (s?.accountId) room.accountsInGame.set(x.id, s.accountId);
+    }
     room.status = 'playing';
     this.log.info(`Partida en la sala ${room.id} con ${seats.length} jugadores`);
     this.broadcastRoom(room);
@@ -508,6 +520,7 @@ export class RoomManager {
     if (room.players.some((p) => p.id === winner.playerId)) {
       room.wins.set(winner.playerId, (room.wins.get(winner.playerId) || 0) + 1);
     }
+    this.recordStats(room, winner);
     this.handOffHostIfAway(room, { announce: false });
     const name = room.runner?.state.players.find((p) => p.id === winner.playerId)?.name || 'Alguien';
     this.log.info(`Sala ${room.id}: ganó ${name} (${winner.reason})`);
@@ -516,6 +529,22 @@ export class RoomManager {
       ? `${name} ganó: los demás abandonaron`
       : `¡${name} ganó la partida!`);
     this.markListDirty();
+  }
+
+  // +1 jugada a cada cuenta de la partida y +1 ganada a la del ganador; se les manda account:update
+  recordStats(room, winner) {
+    const ids = room.accountsInGame;
+    room.accountsInGame = null;
+    if (!this.accounts || !ids?.size) return;
+    try {
+      this.accounts.recordGame([...ids.values()], ids.get(winner.playerId) || null);
+      for (const accountId of new Set(ids.values())) {
+        const account = this.accounts.get(accountId);
+        if (account) this.friends?.emitToAccount(accountId, 'account:update', this.friends.selfView(account));
+      }
+    } catch (err) {
+      this.log.error('No se pudieron guardar las estadísticas:', err);
+    }
   }
 
   rematch(session, payload) {

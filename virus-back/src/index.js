@@ -2,6 +2,7 @@
 // `createServer` arma una instancia aislada (los tests levantan varias en puertos aleatorios);
 // si este archivo se ejecuta directamente, arranca en PORT (3001 por defecto).
 import http from 'node:http';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import express from 'express';
 import cors from 'cors';
@@ -9,7 +10,12 @@ import { Server } from 'socket.io';
 import { toClientError, fail } from './errors.js';
 import { SessionStore, defaultProfile } from './sessions.js';
 import { RoomManager } from './rooms.js';
-import { parseProfile, parseProfileLoose, parseToken, isPlainObject } from './validate.js';
+import { AccountStore } from './accounts.js';
+import { FriendService } from './friends.js';
+import { createVerifier } from './auth.js';
+import {
+  parseProfile, parseProfileLoose, parseToken, parseText, isPlainObject, asObject, NAME_MAX,
+} from './validate.js';
 
 const envInt = (name, def) => {
   const n = Number.parseInt(process.env[name] ?? '', 10);
@@ -27,6 +33,9 @@ const DEFAULT_LIMITS = {
   maxRoomsPerIp: 8, // salas vivas creadas desde la misma IP
 };
 const SESSION_WINDOW_MS = 60_000;
+// Intentos de inicio de sesión con Google por sesión
+const AUTH_BURST = 6;
+const AUTH_WINDOW_MS = 60_000;
 // Sesiones desconectadas y sin sala: se borran tras este tiempo (antes 6 h)
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const PRUNE_EVERY_MS = 5 * 60 * 1000;
@@ -67,6 +76,10 @@ function makeLogger(enabled) {
  * @param {boolean} [opts.log]                 logs en consola
  * @param {object}  [opts.limits]              topes por IP (ver DEFAULT_LIMITS)
  * @param {boolean|number} [opts.trustProxy]   proxies propios delante (TRUST_PROXY=1): la IP sale de X-Forwarded-For
+ * @param {string}  [opts.dbFile]              base SQLite (DATA_DIR/rona.db); ':memory:' en los tests
+ * @param {string}  [opts.googleClientId]      GOOGLE_CLIENT_ID: sin él no hay botón de Google
+ * @param {boolean} [opts.authDevFake]         AUTH_DEV_FAKE=1: acepta credenciales "dev:<sub>:<nombre>" (nunca en producción)
+ * @param {Function} [opts.verifyGoogle]       verificador del ID token (por defecto, google-auth-library)
  */
 export function createServer(opts = {}) {
   const timing = {
@@ -115,7 +128,38 @@ export function createServer(opts = {}) {
     log,
     onGraceExpired: (session) => rooms.onGraceExpired(session),
   });
-  rooms = new RoomManager({ io, sessions, timing, log, limits });
+  // ---------- cuentas y amigos ----------
+
+  const dbFile = opts.dbFile ?? path.join(process.env.DATA_DIR || './data', 'rona.db');
+  const accounts = new AccountStore({ file: dbFile });
+  const googleClientId = (opts.googleClientId ?? process.env.GOOGLE_CLIENT_ID ?? '').trim() || null;
+  const authDevFake = process.env.NODE_ENV !== 'production' && (opts.authDevFake ?? process.env.AUTH_DEV_FAKE === '1');
+  const verifyGoogle = opts.verifyGoogle ?? createVerifier({ clientId: googleClientId, devFake: authDevFake });
+  const authConfig = { googleClientId, devFake: authDevFake };
+  if (authDevFake) log.warn('AUTH_DEV_FAKE activo: se aceptan credenciales de prueba "dev:<sub>:<nombre>"');
+  const friends = new FriendService({ io, accounts, sessions, log });
+  rooms = new RoomManager({ io, sessions, timing, log, limits, friends, accounts });
+  friends.rooms = rooms;
+
+  // Liga la sesión a la cuenta: el perfil guardado en la cuenta manda
+  const bindAccount = (session, account, authToken) => {
+    const before = session.accountId;
+    sessions.bindAccount(session, account.id, authToken);
+    session.profile = { ...account.profile };
+    session.profileChosen = true;
+    if (session.roomId) rooms.onProfileChanged(session);
+    if (before && before !== account.id) friends.markPresence(before);
+    friends.markSession(session);
+  };
+  const unbindAccount = (session) => {
+    const was = session.accountId;
+    sessions.bindAccount(session, null);
+    friends.markPresence(was);
+  };
+  const accountView = (session) => {
+    const account = session.accountId ? accounts.get(session.accountId) : null;
+    return account ? friends.selfView(account) : null;
+  };
 
   // ---------- topes por IP ----------
 
@@ -163,6 +207,7 @@ export function createServer(opts = {}) {
   };
 
   app.get('/health', (req, res) => res.json({ ok: true }));
+  app.get('/config', (req, res) => res.json({ googleClientId }));
   app.get('/rooms', (req, res) => res.json(rooms.list()));
   app.use((req, res) => res.status(404).json({ ok: false, error: { code: 'NOT_FOUND', message: 'No existe' } }));
   // Express 4 necesita los 4 parámetros para reconocer el manejador de errores
@@ -179,7 +224,7 @@ export function createServer(opts = {}) {
 
     // Registra un manejador con ack: valida, atrapa cualquier excepción y responde siempre
     const handle = (event, fn, { needsSession = true } = {}) => {
-      socket.on(event, (...args) => {
+      socket.on(event, async (...args) => {
         const ack = typeof args[args.length - 1] === 'function' ? args.pop() : null;
         const reply = (res) => {
           if (!ack) return;
@@ -198,7 +243,7 @@ export function createServer(opts = {}) {
             reply({ ok: false, error: { code: 'NO_SESSION', message: 'Primero manda session:hello' } });
             return;
           }
-          const data = fn(args[0], session) || {};
+          const data = (await fn(args[0], session)) || {};
           reply({ ok: true, ...data });
         } catch (err) {
           const error = toClientError(err);
@@ -216,13 +261,28 @@ export function createServer(opts = {}) {
       // (antes se creaba otra y la anterior quedaba de anfitriona fantasma de su sala)
       let session = sessions.getByToken(token) || current;
       const restored = !!session;
+      // ¿El cliente trae un nombre propio? (si no, el perfil es uno al azar y al crear cuenta se usa el de Google)
+      const chosen = isPlainObject(p.profile) && (() => {
+        try { return !!parseText(p.profile.name, { field: 'name', max: NAME_MAX }); } catch { return false; }
+      })();
       if (!session) {
         takeSessionSlot(socket.data.ip);
         session = sessions.create(parseProfileLoose(p.profile, defaultProfile()), { ip: socket.data.ip });
-      } else if (p.profile !== undefined) {
+        session.profileChosen = chosen;
+      } else if (p.profile !== undefined && !session.accountId) {
         session.profile = parseProfileLoose(p.profile, session.profile);
+        if (chosen) session.profileChosen = true;
       }
       session.ip = socket.data.ip;
+
+      // "Recuérdame": el token de cuenta liga la sesión aunque el servidor se haya reiniciado.
+      // Si ya no vale (cerró sesión en otro lado o caducó), la sesión vuelve a ser de invitado.
+      const authToken = parseToken(p.auth);
+      if (authToken) {
+        const account = accounts.resumeToken(authToken);
+        if (account) bindAccount(session, account, authToken);
+        else if (session.accountId) unbindAccount(session);
+      }
 
       // Si este socket ya era de otra sesión, se suelta de ella y de los canales de su sala
       const switching = current && current !== session ? current : null;
@@ -244,14 +304,75 @@ export function createServer(opts = {}) {
         if (session.roomId) rooms.onProfileChanged(session);
         rooms.onSessionRestored(session);
       }
-      return { token: session.token, playerId: session.playerId, profile: session.profile, roomId: session.roomId };
+      friends.markSession(session);
+      if (session.accountId) friends.push(session.accountId);
+      return {
+        token: session.token,
+        playerId: session.playerId,
+        profile: session.profile,
+        roomId: session.roomId,
+        account: accountView(session),
+        auth: authConfig,
+      };
     }, { needsSession: false });
 
     handle('profile:update', (payload, session) => {
       session.profile = parseProfile(payload);
+      session.profileChosen = true;
+      if (session.accountId) {
+        accounts.saveProfile(session.accountId, session.profile);
+        // Los otros dispositivos de la misma cuenta también lo ven (y su sala, si están en una)
+        for (const other of sessions.ofAccount(session.accountId)) {
+          if (other === session) continue;
+          other.profile = { ...session.profile };
+          rooms.onProfileChanged(other);
+          if (other.connected && other.socketId) io.to(other.socketId).emit('profile:update', other.profile);
+        }
+        friends.markSession(session);
+      }
       rooms.onProfileChanged(session);
       return { profile: session.profile };
     });
+
+    // ---------- cuentas ----------
+
+    handle('auth:google', async (payload, session) => {
+      const p = asObject(payload, { optional: false });
+      const now = Date.now();
+      const times = (session.authTimes || []).filter((t) => now - t < AUTH_WINDOW_MS);
+      if (times.length >= AUTH_BURST) {
+        session.authTimes = times;
+        fail('RATE_LIMITED', 'Demasiados intentos, espera un minuto');
+      }
+      times.push(now);
+      session.authTimes = times;
+
+      const info = await verifyGoogle(p.credential);
+      // Cuenta nueva: se queda con el perfil que ya traías; si era uno al azar, con tu nombre de Google
+      let profile = session.profile;
+      if (!session.profileChosen && info.name) {
+        profile = { ...profile, name: [...info.name].slice(0, NAME_MAX).join('').trim() || profile.name };
+      }
+      const { account, created } = accounts.loginGoogle(info, profile);
+      if (session.authToken) accounts.revokeToken(session.authToken);
+      const authToken = accounts.issueToken(account.id);
+      bindAccount(session, account, authToken);
+      friends.push(account.id);
+      log.info(`${account.profile.name} entró con su cuenta${created ? ' (nueva)' : ''}`);
+      return { authToken, created, account: friends.selfView(account), profile: session.profile };
+    });
+
+    handle('auth:logout', (payload, session) => {
+      if (session.authToken) accounts.revokeToken(session.authToken);
+      unbindAccount(session);
+      return { profile: session.profile };
+    });
+
+    handle('friends:list', (payload, session) => friends.list(session));
+    handle('friends:request', (payload, session) => friends.request(session, payload));
+    handle('friends:respond', (payload, session) => friends.respond(session, payload));
+    handle('friends:remove', (payload, session) => friends.remove(session, payload));
+    handle('friends:invite', (payload, session) => friends.invite(session, payload));
 
     handle('rooms:list', () => ({ rooms: rooms.list() }), { needsSession: false });
     handle('room:create', (payload, session) => rooms.create(session, payload));
@@ -272,6 +393,7 @@ export function createServer(opts = {}) {
         if (!session || session.socketId !== socket.id) return;
         sessions.detach(session);
         rooms.onDisconnected(session);
+        friends.markSession(session);
       } catch (err) {
         log.error('Error al desconectar:', err);
       }
@@ -281,6 +403,7 @@ export function createServer(opts = {}) {
   // Limpieza periódica de sesiones viejas sin sala
   const pruneTimer = setInterval(() => {
     const n = sessions.prune(SESSION_IDLE_MS);
+    try { accounts.pruneTokens(); } catch (err) { log.error('No se pudieron borrar tokens viejos:', err); }
     if (n) log.info(`Se borraron ${n} sesiones inactivas`);
     const now = Date.now();
     for (const [ip, times] of sessionsByIp) {
@@ -295,6 +418,7 @@ export function createServer(opts = {}) {
     httpServer,
     rooms,
     sessions,
+    accounts,
     timing,
     // Escucha en `port` (0 = aleatorio) y resuelve con el puerto real
     listen(port = 0, host) {
@@ -312,7 +436,10 @@ export function createServer(opts = {}) {
       rooms.dispose();
       sessions.dispose();
       return new Promise((resolve) => {
-        io.close(() => resolve());
+        io.close(() => {
+          accounts.close();
+          resolve();
+        });
       });
     },
   };

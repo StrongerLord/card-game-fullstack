@@ -4,6 +4,7 @@ import { useStore } from '../../store/useStore';
 import { AVATARS, avatarImage } from '../../lib/avatars';
 import { toast, toastError } from './toasts';
 import { IconCheck, IconChevronLeft, IconChevronRight } from './icons';
+import { AccountSection, GoogleMark } from '../account/AccountSection';
 
 export const SWATCHES = [
   '#ffae00', '#ff7a1a', '#ff4d4d', '#ff7ab6', '#c070ff',
@@ -21,7 +22,7 @@ export const validateName = (name) => {
 const wrap = (i) => (i + AVATARS.length) % AVATARS.length;
 
 // Carrusel del avatar: clic en la cara o en las flechas para cambiar
-const AvatarPicker = ({ value, color, onChange }) => {
+const AvatarPicker = ({ value, color, onChange, signedIn = false }) => {
   const [dir, setDir] = useState(1);
   const go = (delta) => {
     setDir(delta);
@@ -33,35 +34,52 @@ const AvatarPicker = ({ value, color, onChange }) => {
         <IconChevronLeft />
       </motion.button>
 
-      <motion.button
-        type="button"
-        className="avatar-picker__frame"
-        style={{ '--avatar-color': color }}
-        onClick={() => go(1)}
-        whileHover={{ scale: 1.05, rotate: -2 }}
-        whileTap={{ scale: 0.92 }}
-        aria-label="Cambiar avatar"
-        title="Toca para cambiar"
-      >
-        <AnimatePresence initial={false} custom={dir} mode="popLayout">
-          <motion.img
-            key={value}
-            src={avatarImage(value)}
-            alt={`Avatar ${value + 1}`}
-            draggable="false"
-            custom={dir}
-            variants={{
-              enter: (d) => ({ x: d * 110, opacity: 0, rotate: d * 20, scale: 0.6 }),
-              center: { x: 0, opacity: 1, rotate: 0, scale: 1 },
-              exit: (d) => ({ x: d * -110, opacity: 0, rotate: d * -20, scale: 0.6 }),
-            }}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-          />
+      <div className="avatar-picker__holder">
+        <motion.button
+          type="button"
+          className="avatar-picker__frame"
+          style={{ '--avatar-color': color }}
+          onClick={() => go(1)}
+          whileHover={{ scale: 1.05, rotate: -2 }}
+          whileTap={{ scale: 0.92 }}
+          aria-label="Cambiar avatar"
+          title="Toca para cambiar"
+        >
+          <AnimatePresence initial={false} custom={dir} mode="popLayout">
+            <motion.img
+              key={value}
+              src={avatarImage(value)}
+              alt={`Avatar ${value + 1}`}
+              draggable="false"
+              custom={dir}
+              variants={{
+                enter: (d) => ({ x: d * 110, opacity: 0, rotate: d * 20, scale: 0.6 }),
+                center: { x: 0, opacity: 1, rotate: 0, scale: 1 },
+                exit: (d) => ({ x: d * -110, opacity: 0, rotate: d * -20, scale: 0.6 }),
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+            />
+          </AnimatePresence>
+        </motion.button>
+        {/* Estado de la sesión: con cuenta de Google, la "G" en la esquina */}
+        <AnimatePresence>
+          {signedIn && (
+            <motion.span
+              className="avatar-picker__badge"
+              title="Perfil guardado en tu cuenta de Google"
+              initial={{ scale: 0, rotate: -90 }}
+              animate={{ scale: 1, rotate: 0 }}
+              exit={{ scale: 0 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 16 }}
+            >
+              <GoogleMark />
+            </motion.span>
+          )}
         </AnimatePresence>
-      </motion.button>
+      </div>
 
       <motion.button type="button" className="avatar-picker__arrow" onClick={() => go(1)} whileTap={{ scale: 0.8, x: 4 }} aria-label="Avatar siguiente">
         <IconChevronRight />
@@ -121,6 +139,7 @@ export const ColorPicker = ({ value, onChange }) => (
 export const ProfileCard = () => {
   const profile = useStore((s) => s.profile);
   const updateProfile = useStore((s) => s.updateProfile);
+  const signedIn = useStore((s) => !!s.account);
   const [draft, setDraft] = useState(profile);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -165,6 +184,7 @@ export const ProfileCard = () => {
       <AvatarPicker
         value={draft.avatar}
         color={draft.color}
+        signedIn={signedIn}
         onChange={(avatar) => setDraft((d) => ({ ...d, avatar }))}
       />
 
@@ -221,6 +241,8 @@ export const ProfileCard = () => {
           </motion.span>
         </AnimatePresence>
       </motion.button>
+
+      <AccountSection />
     </motion.form>
   );
 };
