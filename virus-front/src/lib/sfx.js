@@ -1,47 +1,89 @@
 // Efectos de sonido sintetizados con WebAudio (sin archivos de audio).
 // Uso: import { sfx } from '../lib/sfx'; sfx.play();
-// El silencio se guarda en localStorage['rona.muted'] y es el ÚNICO de la app: la música del lobby
-// (features/lobby/music.jsx) lo lee de aquí y se entera de los cambios con onMuteChange.
+// El silencio se guarda en localStorage['rona.muted'] y es el ÚNICO de la app ("Silenciar todo"): la música
+// del lobby (features/lobby/music.jsx) lo lee de aquí y se entera de los cambios con onMuteChange.
+// Además hay dos volúmenes (0–100) por separado, 'music' y 'sfx', en localStorage['rona.vol.music'|'rona.vol.sfx'].
+// La música pasa por el mismo AudioContext (getAudioContext + musicBus), así su volumen también funciona en iOS.
 
 const MUTE_KEY = 'rona.muted';
+const VOL_KEYS = { music: 'rona.vol.music', sfx: 'rona.vol.sfx' };
+const DEFAULT_VOL = 70;
+const SFX_GAIN = 0.45; // ganancia de los efectos con el volumen al 100 %
 
 let ctx = null;
 let master = null;
+let musicBus = null;
 let muted = (() => {
   try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; }
 })();
+const readVol = (kind) => {
+  try {
+    const v = Number(localStorage.getItem(VOL_KEYS[kind]));
+    return localStorage.getItem(VOL_KEYS[kind]) !== null && Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : DEFAULT_VOL;
+  } catch { return DEFAULT_VOL; }
+};
+const volumes = { music: readVol('music'), sfx: readVol('sfx') };
 const listeners = new Set();
+const volListeners = new Set();
 
-// Crea (o reanuda) el AudioContext; los navegadores lo dejan suspendido hasta un gesto del usuario
-const audio = () => {
+const sfxTarget = () => (muted ? 0 : SFX_GAIN * (volumes.sfx / 100));
+const musicTarget = () => (muted ? 0 : volumes.music / 100);
+
+// Lleva las ganancias a su valor con una rampa corta (sin chasquidos)
+const applyGains = () => {
+  if (!ctx) return;
+  master?.gain.setTargetAtTime(sfxTarget(), ctx.currentTime, 0.05);
+  musicBus?.gain.setTargetAtTime(musicTarget(), ctx.currentTime, 0.05);
+};
+
+// Crea el AudioContext (sin reanudarlo). Se llama en un momento ocioso al cargar la página, para que
+// nunca se cree en medio de un lote de animaciones (era una tarea larga de ~100 ms).
+const ensureContext = () => {
   if (typeof window === 'undefined') return null;
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
-    ctx = new AC();
+    try { ctx = new AC(); } catch { return null; }
     master = ctx.createGain();
-    master.gain.value = 0.45;
+    master.gain.value = sfxTarget();
     // Un compresor suave para que los sonidos encimados no saturen
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
     comp.ratio.value = 4;
     master.connect(comp);
     comp.connect(ctx.destination);
+    // La música va directo a la salida: no debe disparar el compresor de los efectos
+    musicBus = ctx.createGain();
+    musicBus.gain.value = musicTarget();
+    musicBus.connect(ctx.destination);
   }
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   return ctx;
 };
 
+// Contexto listo para sonar; los navegadores lo dejan suspendido hasta un gesto del usuario
+const audio = () => {
+  const ac = ensureContext();
+  if (ac && ac.state === 'suspended') ac.resume().catch(() => {});
+  return ac;
+};
+
 if (typeof window !== 'undefined') {
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 500));
+  idle(() => ensureContext());
+  // En el gesto sólo se reanuda (el contexto ya existe casi siempre)
   const unlock = () => audio();
   window.addEventListener('pointerdown', unlock, { once: true, capture: true });
   window.addEventListener('keydown', unlock, { once: true, capture: true });
 }
 
+// Para la música del lobby: el mismo contexto y el bus con el volumen de la música
+export const getAudioContext = () => ensureContext();
+export const getMusicBus = () => (ensureContext() ? musicBus : null);
+
 // Tono con envolvente: frecuencia inicial → final, tipo de onda, duración en segundos
 const tone = ({ freq, to, type = 'sine', dur = 0.15, vol = 0.3, delay = 0, attack = 0.005, detune = 0 }) => {
   const ac = audio();
-  if (!ac || muted) return;
+  if (!ac || muted || volumes.sfx === 0) return;
   const t0 = ac.currentTime + delay;
   const osc = ac.createOscillator();
   const gain = ac.createGain();
@@ -70,7 +112,7 @@ const getNoise = (ac) => {
 // Ruido filtrado (soplidos, explosiones, barajeos)
 const noise = ({ dur = 0.2, vol = 0.25, freq = 1200, to, filter = 'bandpass', q = 1, delay = 0, attack = 0.005 }) => {
   const ac = audio();
-  if (!ac || muted) return;
+  if (!ac || muted || volumes.sfx === 0) return;
   const t0 = ac.currentTime + delay;
   const src = ac.createBufferSource();
   src.buffer = getNoise(ac);
@@ -171,7 +213,7 @@ export const isMuted = () => muted;
 export const setMuted = (value) => {
   muted = !!value;
   try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch { /* sin almacenamiento */ }
-  if (master && ctx) master.gain.setTargetAtTime(muted ? 0 : 0.45, ctx.currentTime, 0.02);
+  applyGains();
   listeners.forEach((fn) => fn(muted));
 };
 
@@ -182,3 +224,35 @@ export const onMuteChange = (fn) => {
   listeners.add(fn);
   return () => listeners.delete(fn);
 };
+
+// Volumen de 0 a 100 de 'music' o 'sfx'
+export const getVolume = (kind) => volumes[kind] ?? DEFAULT_VOL;
+
+export const setVolume = (kind, value) => {
+  if (!(kind in volumes)) return;
+  const v = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+  if (v === volumes[kind]) return;
+  volumes[kind] = v;
+  try { localStorage.setItem(VOL_KEYS[kind], String(v)); } catch { /* sin almacenamiento */ }
+  applyGains();
+  volListeners.forEach((fn) => fn(kind, v));
+};
+
+// Para que la UI (y la música) se enteren de los cambios de volumen: fn(kind, valor)
+export const onVolumeChange = (fn) => {
+  volListeners.add(fn);
+  return () => volListeners.delete(fn);
+};
+
+// En desarrollo, para las pruebas de Playwright: lee las ganancias reales y las de destino
+// (Chrome no actualiza gain.value de un nodo sin nada sonando, por eso también van los objetivos)
+if (import.meta.env?.DEV && typeof window !== 'undefined') {
+  window.__ronaAudio = {
+    get sfxGain() { return master?.gain.value ?? null; },
+    get musicGain() { return musicBus?.gain.value ?? null; },
+    get sfxTarget() { return sfxTarget(); },
+    get musicTarget() { return musicTarget(); },
+    get state() { return ctx?.state ?? null; },
+    volumes,
+  };
+}

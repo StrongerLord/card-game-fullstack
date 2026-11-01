@@ -1,6 +1,7 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { GameCard, CardBack } from './GameCard';
+import { BACK_IMAGE } from '../../lib/cards';
 import logo from '../../assets/roña.png';
 import { pressable } from './a11y';
 
@@ -17,6 +18,20 @@ export const CenterPiles = memo(function CenterPiles({ center, deckCount, discar
   const layers = Math.min(4, Math.max(0, Math.ceil(deckCount / 12)));
   const under = Math.min(3, Math.max(0, discardCount - 1));
   const gap = w * 0.45;
+
+  // La carta de arriba anterior se queda pintada debajo de la nueva hasta que ésta termine de llegar
+  // (si no, mientras vuela se ve un hueco o la capa lisa del montón)
+  const [shownTop, setShownTop] = useState(discardTop);
+  const [ghost, setGhost] = useState(null);
+  if ((discardTop?.id || null) !== (shownTop?.id || null)) {
+    setGhost(discardTop && shownTop ? shownTop : null);
+    setShownTop(discardTop);
+  }
+  useEffect(() => {
+    if (!ghost) return undefined;
+    const t = setTimeout(() => setGhost(null), 700);
+    return () => clearTimeout(t);
+  }, [ghost]);
 
   return (
     <div
@@ -49,9 +64,22 @@ export const CenterPiles = memo(function CenterPiles({ center, deckCount, discar
 
         <div className="gt-discard" data-anchor="discard" style={{ width: w, height: h }} title={`${discardCount} cartas en el descarte`}>
           {Array.from({ length: under }, (_, i) => (
-            <div key={i} className="gt-discard-layer" style={{ transform: `rotate(${(i - 1) * 9 + 4}deg)` }} />
+            <div key={i} className="gt-discard-layer" style={{ transform: `rotate(${(i - 1) * 9 + 4}deg)`, backgroundImage: `url(${BACK_IMAGE})` }} />
           ))}
-          {!discardTop && <div className="gt-pile-empty"><span>descarte</span></div>}
+          {!discardTop && !ghost && <div className="gt-pile-empty"><span>descarte</span></div>}
+          {ghost && (
+            <GameCard
+              key={`ghost-${ghost.id}`}
+              card={ghost}
+              w={w}
+              h={h}
+              noLayout
+              fxKey={`ghost:${ghost.id}`}
+              data-card-id={undefined}
+              className="gt-discard-ghost"
+              style={{ rotate: tiltOf(ghost.id), zIndex: 4 }}
+            />
+          )}
           {discardTop && (
             <GameCard
               key={discardTop.id}
@@ -60,6 +88,7 @@ export const CenterPiles = memo(function CenterPiles({ center, deckCount, discar
               h={h}
               className="gt-discard-top"
               style={{ rotate: tiltOf(discardTop.id), zIndex: 5 }}
+              onLayoutAnimationComplete={() => setGhost(null)}
             />
           )}
         </div>

@@ -5,9 +5,9 @@ import { fail } from './errors.js';
 import { GameRunner } from './gameRunner.js';
 import { reactionsFor, replyTo } from './botTalk.js';
 import { EMOTES } from '../../shared/emotes.js';
-import { randomAvatar, randomColor } from './sessions.js';
+import { randomColor } from './sessions.js';
 import {
-  asObject, parseText, parseId, parseRoomId, parseAction, ROOM_NAME_MAX, CHAT_MAX,
+  asObject, parseText, parseId, parseRoomId, parseAction, ROOM_NAME_MAX, CHAT_MAX, AVATAR_MAX,
 } from './validate.js';
 
 const MIN_PLAYERS = 2;
@@ -23,6 +23,22 @@ const JOIN_WINDOW_MS = 30_000;
 const EMOTE_BURST = 4;
 const EMOTE_WINDOW_MS = 3000;
 const BOT_EMOTE_COOLDOWN_MS = 3500;
+// Uno al azar de `list` que no esté en `used`; si ya se usaron todos, cualquiera
+const pickUnused = (list, used) => {
+  const free = list.filter((x) => !used.has(x));
+  const from = free.length ? free : list;
+  return from[crypto.randomInt(from.length)];
+};
+// Igual, para generadores sin lista (los colores viven en sessions.js): hasta 20 intentos
+const randomUnused = (gen, used) => {
+  for (let i = 0; i < 20; i++) {
+    const v = gen();
+    if (!used.has(v)) return v;
+  }
+  return gen();
+};
+const AVATAR_IDS = Array.from({ length: AVATAR_MAX + 1 }, (_, i) => i);
+
 const ROOM_ID_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const BOT_NAMES = [
@@ -309,8 +325,9 @@ export class RoomManager {
     const bot = {
       id: `bot_${crypto.randomBytes(5).toString('base64url')}`,
       name,
-      avatar: randomAvatar(),
-      color: randomColor(),
+      // Avatar y color que no tenga nadie más en la sala, para distinguirlos en la mesa
+      avatar: pickUnused(AVATAR_IDS, new Set(room.players.map((x) => x.avatar))),
+      color: randomUnused(randomColor, new Set(room.players.map((x) => String(x.color).toLowerCase()))),
       isBot: true,
       level,
     };

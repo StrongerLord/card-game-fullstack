@@ -1,8 +1,8 @@
-import { memo } from 'react';
+import { memo, useEffect, useLayoutEffect, useState } from 'react';
 import { slotStatus } from '@shared/engine/index.js';
 import { GameCard } from './GameCard';
 import { STACK_EXTRA, STACK_STEP } from './layout';
-import { slotAnchor } from './fx';
+import { slotAnchor, takeArriving } from './fx';
 import { pressable } from './a11y';
 import { COLOR_NAMES } from '../../lib/cards';
 
@@ -49,6 +49,18 @@ const slotLabel = (slot, status, ownerName, mine) => {
 // Una ranura: el órgano con sus virus y medicinas apilados encima, desplazados hacia abajo
 export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetable, picked, hovered, dimmed, onSlot, ownerName, mine }) {
   const status = safeStatus(slot);
+  // Si el reproductor de eventos marcó esta ranura, su insignia y su aura esperan a que la carta aterrice
+  // (al montarse en otro cuerpo o al cambiar de estado); se lee antes del primer pintado
+  const [arrive, setArrive] = useState(null);
+  useLayoutEffect(() => {
+    const a = takeArriving(slot.id);
+    if (a) setArrive({ delay: a.delay, n: Date.now() });
+  }, [status, slot.id]);
+  useEffect(() => {
+    if (!arrive) return undefined;
+    const t = setTimeout(() => setArrive(null), arrive.delay + 600);
+    return () => clearTimeout(t);
+  }, [arrive]);
   const mods = [...(slot.viruses || []), ...(slot.medicines || [])];
   const stackH = h * (1 + STACK_STEP * mods.length);
   const classes = [
@@ -58,6 +70,7 @@ export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetabl
     picked && 'is-picked',
     hovered && 'is-hover',
     dimmed && 'is-dim',
+    arrive && 'is-arriving',
   ].filter(Boolean).join(' ');
   const label = slotLabel(slot, status, ownerName, mine);
   // Si es destino, es un botón (clic, Enter o Espacio); si no, una imagen con su estado para el lector de pantalla
@@ -68,7 +81,9 @@ export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetabl
   return (
     <div
       className={classes}
-      style={{ width: w, height: h * (1 + STACK_EXTRA), '--w': `${w}px`, '--h': `${h}px` }}
+      style={{
+        width: w, height: h * (1 + STACK_EXTRA), '--w': `${w}px`, '--h': `${h}px`, ...(arrive && { '--arrive-delay': `${arrive.delay}ms` }),
+      }}
       data-anchor={slotAnchor(playerId, slot.id)}
       data-drop={targetable ? 'slot' : undefined}
       data-pid={playerId}
@@ -88,6 +103,17 @@ export const BodySlot = memo(function BodySlot({ slot, playerId, w, h, targetabl
         />
       ))}
       <GameCard card={slot.organ} w={w} h={h} className="gt-slot-card gt-organ" style={{ top: 0, left: 0, zIndex: 4 }} />
+      {/* La carta que golpea (vista intermedia del reproductor de eventos): encima del órgano, ladeada */}
+      {slot.incoming && (
+        <GameCard
+          key={slot.incoming.id}
+          card={slot.incoming}
+          w={w}
+          h={h}
+          className="gt-slot-card gt-incoming"
+          style={{ top: h * STACK_STEP * 0.6, left: w * 0.12, zIndex: 7, rotate: 8 }}
+        />
+      )}
       {status === 'immunized' && <div className="gt-slot-shine" style={{ height: stackH }} />}
       {status === 'vaccinated' && <div className="gt-slot-sweep" style={{ height: stackH }} />}
       {status !== 'healthy' && (

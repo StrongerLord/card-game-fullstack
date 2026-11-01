@@ -1,10 +1,11 @@
-import { memo, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { memo, useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import avatars from '../../lib/avatars';
 import { avatarAnchor } from './fx';
 import { useFitFont } from './fitText';
 import { pressable } from './a11y';
 import { EmoteBubble } from '../emotes/EmoteBubble';
+import { CrownIcon } from './CrownIcon';
 
 // Anillo de cuenta regresiva del turno: una animación CSS con la duración restante
 const TurnRing = ({ size, timer }) => {
@@ -43,6 +44,56 @@ const TurnRing = ({ size, timer }) => {
   );
 };
 
+// Turno de un bot: en vez de la cuenta regresiva, un arco que gira (está pensando)
+const SpinRing = ({ size }) => {
+  const stroke = Math.max(3, size * 0.07);
+  const r = size / 2 + stroke * 0.9;
+  const box = r * 2 + stroke * 2;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg
+      className="gt-ring gt-ring-spin"
+      width={box}
+      height={box}
+      viewBox={`0 0 ${box} ${box}`}
+      style={{ left: (size - box) / 2, top: (size - box) / 2 }}
+      aria-hidden
+    >
+      <circle className="gt-ring-track" cx={box / 2} cy={box / 2} r={r} strokeWidth={stroke} />
+      <circle className="gt-ring-arc" cx={box / 2} cy={box / 2} r={r} strokeWidth={stroke} strokeDasharray={`${c * 0.28} ${c}`} />
+    </svg>
+  );
+};
+
+// Globo de "pensando" (tres puntos) junto al avatar de un bot, un momento después de que empieza su turno
+const THINK_AFTER_MS = 800;
+const ThinkingBubble = ({ active, side, turnKey }) => {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    setShow(false);
+    if (!active) return undefined;
+    const t = setTimeout(() => setShow(true), THINK_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [active, turnKey]);
+  return (
+    <AnimatePresence>
+      {active && show && (
+        <motion.div
+          className={`emote-bubble emote-${side} gt-think`}
+          role="status"
+          aria-label="Pensando"
+          initial={{ opacity: 0, scale: 0.3 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.6, transition: { duration: 0.15 } }}
+          transition={{ type: 'spring', stiffness: 420, damping: 22 }}
+        >
+          <i /><i /><i />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 // Nombre del jugador: hasta dos renglones dentro de su ancho máximo (para no invadir el asiento vecino).
 // La letra se achica, medida en el DOM con la fuente real, hasta que quepa la palabra más larga
 // sin partirla; no baja de 11 px. Sólo un nombre de una palabra larguísima se parte como último recurso.
@@ -74,6 +125,7 @@ export const Avatar = memo(function Avatar({
   const offline = info && info.connected === false;
   const out = !!gp?.out;
   const wins = info?.wins || 0;
+  const thinking = isTurn && !!info?.isBot && !gp?.acting;
   const classes = [
     'gt-avatar',
     `gt-name-${nameSide}`,
@@ -102,7 +154,7 @@ export const Avatar = memo(function Avatar({
         transition={isTurn ? { duration: 1.6, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
       >
         <img src={img} alt="" draggable={false} />
-        {isTurn && <TurnRing size={size} timer={timer} />}
+        {isTurn && (thinking ? <SpinRing size={size} /> : <TurnRing size={size} timer={timer} />)}
         {offline && !out && (
           <span className="gt-badge gt-badge-off" title="Sin conexión" aria-label="Sin conexión">
             <svg viewBox="0 0 24 24" aria-hidden>
@@ -124,11 +176,12 @@ export const Avatar = memo(function Avatar({
         {out && <span className="gt-badge gt-badge-out">fuera</span>}
         {wins > 0 && (
           <span className="gt-badge gt-badge-wins" title={`${wins} ${wins === 1 ? 'victoria' : 'victorias'} en esta sala`} aria-label={`${wins} ${wins === 1 ? 'victoria' : 'victorias'}`}>
-            👑{wins}
+            <CrownIcon />{wins}
           </span>
         )}
       </motion.div>
       {gp?.id && <EmoteBubble playerId={gp.id} side={bubbleSide} />}
+      <ThinkingBubble active={thinking} side={bubbleSide} turnKey={timer?.start} />
       {nameSide !== 'none' && (
         <div className="gt-avatar-name">
           {nameMax

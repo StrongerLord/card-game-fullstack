@@ -1,0 +1,521 @@
+/* ============================================================
+   Mesa — claridad de UX (se carga DESPUÉS de game.css y lo puede sobreescribir)
+   Volumen, pista, arrastrar y soltar, fin de partida, chat, ayuda táctil y blancos táctiles.
+   ============================================================ */
+
+/* ---------------- Control de volumen en la mesa ---------------- */
+
+.gt-icon-btn.vol-btn.is-open {
+  background: var(--accent);
+  color: #fff;
+}
+
+.gt-icon-btn.vol-btn.is-off.is-open {
+  color: #fff;
+}
+
+/* El panel de la mesa lleva el morado de la mesa en el borde */
+.vol-pop--table {
+  border-color: var(--strokes);
+  box-shadow: 0 5px 0 var(--strokes), 0 16px 40px rgba(20, 5, 70, 0.45);
+}
+
+.vol-pop--table.is-sheet {
+  box-shadow: 0 -6px 30px rgba(20, 5, 70, 0.45);
+}
+
+/* ---------------- Pista ---------------- */
+
+/* Letra mínima legible (antes el texto bajaba a ~10 px) */
+.gt-hint span:not(.gt-count) {
+  font-size: max(12px, 0.82em);
+}
+
+@media (max-height: 480px) {
+  .gt-hint {
+    font-size: 12px;
+  }
+}
+
+/* En vertical: una sola línea en su franja propia (layout.js reserva el espacio), título y texto con
+   puntos suspensivos y el aviso de "sin destino" como chip aparte */
+.gt-root.is-portrait .gt-hint-wrap {
+  width: calc(100vw - 16px);
+  gap: 6px;
+  align-items: center;
+}
+
+.gt-root.is-portrait .gt-hint {
+  font-size: 13px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  text-align: left;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.3em 0.75em 0.25em;
+  gap: 0.5em;
+}
+
+.gt-root.is-portrait .gt-hint strong {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gt-root.is-portrait .gt-hint span:not(.gt-count),
+.gt-root.is-portrait .gt-hint.is-card span:not(.gt-count) {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Con el chip de "sin destino" al lado, sólo va el nombre de la carta (la acción es el botón Descartarla) */
+.gt-root.is-portrait .gt-hint.has-warn span:not(.gt-count) {
+  display: none;
+}
+
+.gt-root.is-portrait .gt-hint.has-warn strong {
+  max-width: none;
+}
+
+.gt-root.is-portrait .gt-hint .gt-count {
+  font-size: 12px;
+}
+
+.gt-hint-warn {
+  flex: none;
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 0.45em 0.7em 0.4em;
+  border-radius: 999px;
+  background: #ffe1e1;
+  color: #b3261e;
+  border: 2px solid #ff8a8a;
+  box-shadow: 0 4px 10px rgba(20, 5, 70, 0.3);
+}
+
+/* Botón "Descartarla": late suave para invitar a usarlo (con `scale`, que no pisa el transform de framer) */
+.gt-btn-throb {
+  animation: gt-throb 1.4s ease-in-out infinite;
+}
+
+@keyframes gt-throb {
+  0%, 100% { scale: 1; }
+  50% { scale: 1.04; }
+}
+
+/* ---------------- Arrastrar y soltar ---------------- */
+
+/* Todo mi panel es destino cuando llevo un órgano */
+.gt-me-panel.is-drop {
+  outline: 3px dashed rgba(255, 174, 0, 0.7);
+  outline-offset: -6px;
+  cursor: pointer;
+}
+
+.gt-me-panel.is-drop.is-hover {
+  outline: 3px solid var(--accent);
+  box-shadow: 0 0 0 3px var(--accent), 0 0 40px 10px rgba(255, 174, 0, 0.55);
+}
+
+/* Mientras hay una carta en el aire, el descarte también se ofrece como destino */
+.gt-root.is-dragging .gt-discard {
+  outline: 3px dashed var(--accent);
+  outline-offset: 6px;
+  border-radius: 10%;
+  animation: gt-discard-ants 0.9s ease-in-out infinite;
+}
+
+.gt-root.is-over-discard .gt-discard {
+  outline-style: solid;
+  outline-offset: 4px;
+  scale: 1.06;
+  animation: none;
+  box-shadow: 0 0 30px 8px rgba(255, 174, 0, 0.7);
+  transition: scale 0.12s;
+}
+
+@keyframes gt-discard-ants {
+  0%, 100% { outline-offset: 6px; }
+  50% { outline-offset: 10px; }
+}
+
+/* El destino bajo la carta hace de imán: crece un poco y se marca con un contorno */
+.gt-slot.is-hover {
+  scale: 1.06;
+  transition: scale 0.12s, transform 0.15s;
+}
+
+.gt-slot.is-hover .gt-slot-target {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.gt-well.is-hover .gt-well-in {
+  scale: 1.06;
+  outline-width: 3px;
+  transition: scale 0.12s;
+}
+
+.gt-avatar.is-hover .gt-avatar-pic {
+  scale: 1.06;
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  transition: scale 0.12s;
+}
+
+.gt-center.is-hover {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* Las ranuras chicas de los rivales en vertical (≈35×54) tienen un área de toque más grande */
+.gt-root.is-portrait .gt-slot[data-drop]::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  z-index: 1;
+}
+
+/* Aviso neutro: la carta se soltó fuera de un destino */
+.gt-nudge-wrap {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 60;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  width: min(90vw, 520px);
+}
+
+.gt-nudge {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  background: rgba(36, 14, 110, 0.92);
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  padding: 7px 16px;
+  box-shadow: 0 6px 18px rgba(20, 5, 70, 0.35);
+  text-align: center;
+}
+
+/* ---------------- Fin de la partida ---------------- */
+
+.gt-score-crown {
+  width: 1em;
+  height: 1em;
+  margin-right: 0.25em;
+  vertical-align: -0.12em;
+  color: #ffc61a;
+  filter: drop-shadow(0 1px 0 #8a5a00);
+}
+
+.gt-end-peek {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+/* En horizontal, "Ver mesa" va chiquito en la esquina de la tarjeta para no amontonar los botones */
+.gt-root:not(.is-portrait) .gt-end-peek {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  font-size: 15px;
+  padding: 0.4em 0.8em 0.3em;
+  box-shadow: 0 3px 0 rgba(30, 10, 90, 0.3);
+  background: #f1edff;
+}
+
+.gt-end-peek svg {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+/* Píldora para volver a abrir los resultados después de "Ver mesa" */
+.gt-end-pill {
+  white-space: nowrap;
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  translate: -50% 0;
+  z-index: 300;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  border: 3px solid #fff;
+  background: var(--strokes);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  box-shadow: 0 6px 0 rgba(30, 10, 90, 0.5), 0 12px 28px rgba(20, 5, 70, 0.45);
+}
+
+.gt-end-pill.is-win {
+  background: var(--accent);
+  text-shadow: 0 2px 0 rgba(150, 80, 0, 0.6);
+}
+
+.gt-end-pill-crown {
+  width: 22px;
+  height: 22px;
+  color: #ffd34d;
+}
+
+.gt-end-pill.is-win .gt-end-pill-crown {
+  color: #fff;
+}
+
+/* En vertical: botones a todo lo ancho y apilados; "Revancha" arriba y "Salir" abajo */
+.gt-root.is-portrait .gt-end-actions {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.gt-root.is-portrait .gt-end-actions .gt-btn {
+  width: 100%;
+  min-height: 52px;
+  font-size: 18px;
+  justify-content: center;
+}
+
+.gt-root.is-portrait .gt-end-rematch,
+.gt-root.is-portrait .gt-end-wait {
+  order: 1;
+}
+
+.gt-root.is-portrait .gt-end-peek {
+  order: 2;
+}
+
+.gt-root.is-portrait .gt-end-leave {
+  order: 3;
+}
+
+.gt-root.is-portrait .gt-end-wait {
+  max-width: none;
+  text-align: center;
+}
+
+.gt-root.is-portrait .gt-end-rematch {
+  animation: gt-throb 1.4s ease-in-out infinite;
+}
+
+/* ---------------- Chat de la mesa ---------------- */
+
+.gt-chat {
+  width: min(300px, 80vw);
+  background: rgba(255, 255, 255, 0.84);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-width: 4px;
+}
+
+.gt-chat-list {
+  background: transparent;
+}
+
+.gt-chat-emotes {
+  padding: 6px 8px 0;
+  gap: 2px;
+}
+
+.gt-chat-emotes .emote-btn {
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+  background: #f1ecff;
+}
+
+.gt-chat-emotes .emote-btn:hover {
+  background: #ddd0ff;
+}
+
+.gt-chat-form {
+  border-top: none;
+}
+
+.gt-chat-send {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  min-height: 42px;
+  flex: none;
+  padding: 0;
+  border-radius: 14px;
+  border: 3px solid var(--strokes);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: inset 0 -4px 0 var(--accent-dark), 0 3px 0 var(--strokes);
+}
+
+.gt-chat-send:disabled {
+  background: #d9d2ea;
+  box-shadow: inset 0 -4px 0 #bfb5d8, 0 3px 0 var(--strokes);
+  cursor: default;
+}
+
+.gt-chat-send svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* En vertical: hoja inferior al 60 % del alto que se cierra arrastrándola hacia abajo */
+.gt-chat-back {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  background: rgba(20, 8, 60, 0.35);
+}
+
+.gt-root.is-portrait .gt-chat.is-sheet {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: 60vh;
+  height: 60dvh;
+  border-width: 4px 0 0;
+  border-radius: 24px 24px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.gt-chat.is-sheet header {
+  position: relative;
+  padding-top: 16px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.gt-chat-grab {
+  position: absolute;
+  left: 50%;
+  top: 6px;
+  width: 44px;
+  height: 5px;
+  margin-left: -22px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* ---------------- Ayuda táctil (CardTip.jsx) ---------------- */
+
+.card-tip-teach {
+  position: fixed;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(36, 14, 110, 0.94);
+  border: 2px solid var(--accent);
+  color: #fff;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(20, 5, 70, 0.45);
+  pointer-events: auto;
+}
+
+.card-tip-teach-finger {
+  font-size: 18px;
+  animation: card-tip-press 1.1s ease-in-out infinite;
+}
+
+@keyframes card-tip-press {
+  0%, 100% { transform: translateY(0) scale(1); }
+  45%, 70% { transform: translateY(3px) scale(0.9); }
+}
+
+/* Anillo de progreso alrededor del dedo mientras se mantiene presionada una carta */
+.card-press-ring {
+  position: fixed;
+  z-index: 130;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  pointer-events: none;
+  opacity: 0;
+  animation: card-press-in var(--press-ms, 450ms) linear forwards;
+}
+
+.card-press-ring svg {
+  width: 100%;
+  height: 100%;
+  rotate: -90deg;
+  overflow: visible;
+}
+
+.card-press-ring circle {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  filter: drop-shadow(0 0 4px rgba(255, 174, 0, 0.8));
+  animation: card-press-fill var(--press-ms, 450ms) linear forwards;
+}
+
+/* Aparece hasta que el toque ya no parece un simple clic */
+@keyframes card-press-in {
+  0%, 20% { opacity: 0; }
+  35%, 100% { opacity: 1; }
+}
+
+@keyframes card-press-fill {
+  to { stroke-dashoffset: 0; }
+}
+
+/* ---------------- Pantallas táctiles: blancos de al menos 44 px ---------------- */
+
+@media (pointer: coarse) {
+  .gt-icon-btn,
+  .gt-root.is-portrait .gt-icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .gt-root .emote-row {
+    gap: 6px;
+  }
+  .gt-root .emote-btn,
+  .gt-root.is-portrait .gt-end-emotes .emote-btn,
+  .gt-chat-emotes .emote-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
+  .gt-chat-send {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gt-btn-throb,
+  .gt-root.is-portrait .gt-end-rematch,
+  .gt-root.is-dragging .gt-discard,
+  .card-tip-teach-finger {
+    animation: none;
+  }
+}

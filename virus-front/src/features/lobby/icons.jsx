@@ -58,6 +58,30 @@ export const IconVolume = (p) => (
     <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" />
   </svg>
 );
+export const IconVolumeLow = (p) => (
+  <svg {...base} {...p}>
+    <path d="M4 9.5v5h4l5 4.5v-14L8 9.5H4z" />
+    <path d="M16.5 8.5a5 5 0 0 1 0 7" />
+  </svg>
+);
+export const IconMusic = (p) => (
+  <svg {...base} {...p}>
+    <path d="M9 18V5.5l11-2V16" />
+    <circle cx="6.5" cy="18" r="2.5" />
+    <circle cx="17.5" cy="16" r="2.5" />
+  </svg>
+);
+export const IconStar = (p) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...p}>
+    <path fill="currentColor" d="M12 2.2l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z" />
+  </svg>
+);
+export const IconEye = (p) => (
+  <svg {...base} {...p}>
+    <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
 export const IconVolumeOff = (p) => (
   <svg {...base} {...p}>
     <path d="M4 9.5v5h4l5 4.5v-14L8 9.5H4z" />

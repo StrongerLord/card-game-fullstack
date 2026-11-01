@@ -1,8 +1,13 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useDragControls } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 import { sfx } from '../../lib/sfx';
 import { toastError } from './Overlays';
+import { IconSend } from '../lobby/icons';
+import { EmoteRow } from '../emotes/EmotePicker';
+
+// En vertical el chat es una hoja inferior: se cierra arrastrándola hacia abajo más de esto
+const SHEET_CLOSE_PX = 80;
 
 const ChatIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden>
@@ -19,8 +24,9 @@ const timeOf = (ts) => {
   }
 };
 
-// Chat plegable de la mesa, con burbuja de no leídos
-export const ChatPanel = memo(function ChatPanel({ me, open, onToggle }) {
+// Chat plegable de la mesa, con burbuja de no leídos. En horizontal es un panel traslúcido a la derecha;
+// en vertical (portrait), una hoja inferior que se cierra arrastrándola desde la manija.
+export const ChatPanel = memo(function ChatPanel({ me, open, onToggle, portrait = false }) {
   const chat = useStore((s) => s.chat);
   const [seen, setSeen] = useState(chat.length);
   const [text, setText] = useState('');
@@ -28,6 +34,7 @@ export const ChatPanel = memo(function ChatPanel({ me, open, onToggle }) {
   const list = useRef(null);
   const input = useRef(null);
   const lastLen = useRef(chat.length);
+  const dragControls = useDragControls();
 
   // Al abrir (o si llega algo con el panel abierto) todo queda leído
   useEffect(() => { if (open) setSeen(chat.length); }, [open, chat.length]);
@@ -82,16 +89,37 @@ export const ChatPanel = memo(function ChatPanel({ me, open, onToggle }) {
         </AnimatePresence>
       </button>
       <AnimatePresence>
+        {open && portrait && (
+          <motion.div
+            key="chat-back"
+            className="gt-chat-back"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onToggle}
+            aria-hidden
+          />
+        )}
         {open && (
           <motion.aside
-            className="gt-chat"
-            initial={{ x: '110%', opacity: 0.5 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '110%', opacity: 0.5 }}
+            key="chat"
+            className={`gt-chat ${portrait ? 'is-sheet' : ''}`}
+            initial={portrait ? { y: '100%' } : { x: '110%', opacity: 0.5 }}
+            animate={portrait ? { y: 0 } : { x: 0, opacity: 1 }}
+            exit={portrait ? { y: '100%' } : { x: '110%', opacity: 0.5 }}
             transition={{ type: 'spring', stiffness: 320, damping: 32 }}
             onKeyDown={(e) => e.stopPropagation()}
+            {...(portrait ? {
+              drag: 'y',
+              dragListener: false,
+              dragControls,
+              dragConstraints: { top: 0, bottom: 0 },
+              dragElastic: { top: 0, bottom: 0.8 },
+              onDragEnd: (e, info) => { if (info.offset.y > SHEET_CLOSE_PX || info.velocity.y > 600) onToggle(); },
+            } : {})}
           >
-            <header>
+            <header onPointerDown={portrait ? (e) => dragControls.start(e) : undefined}>
+              {portrait && <i className="gt-chat-grab" aria-hidden />}
               <span>Chat</span>
               <button type="button" className="gt-chat-close" onClick={onToggle} aria-label="Cerrar chat">✕</button>
             </header>
@@ -109,16 +137,28 @@ export const ChatPanel = memo(function ChatPanel({ me, open, onToggle }) {
                 </div>
               ))}
             </div>
+            <EmoteRow className="gt-chat-emotes" />
             <form className="gt-chat-form" onSubmit={send}>
               <input
                 ref={input}
                 value={text}
                 maxLength={200}
                 placeholder="Escribe algo…"
+                aria-label="Mensaje"
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Escape') onToggle(); }}
               />
-              <button type="submit" className="gt-btn gt-btn-accent" disabled={sending || !text.trim()}>Enviar</button>
+              <motion.button
+                type="submit"
+                className="gt-chat-send"
+                disabled={sending || !text.trim()}
+                whileTap={{ scale: 0.85, rotate: -15 }}
+                whileHover={{ scale: 1.08 }}
+                aria-label="Enviar"
+                title="Enviar"
+              >
+                <IconSend />
+              </motion.button>
             </form>
           </motion.aside>
         )}

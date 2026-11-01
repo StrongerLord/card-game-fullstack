@@ -9,7 +9,8 @@ import { toast, toastError } from './toasts';
 import { useLobbyMusic } from './music';
 import { EmoteBubble } from '../emotes/EmoteBubble';
 import { useEmoteHotkeys } from '../emotes/EmotePicker';
-import { IconClose, IconCrown, IconDoor, IconPlay, IconRobot, IconWifiOff } from './icons';
+import { IconClose, IconDoor, IconPlay, IconRobot, IconStar, IconWifiOff } from './icons';
+import { CrownIcon } from '../game/CrownIcon';
 import '../home/home.css';
 import './lobby.css';
 
@@ -31,13 +32,13 @@ const Seat = ({ player, isHost, isMe, canKick, onKick, index }) => (
   >
     {isHost && (
       <motion.span
-        className="seat__crown"
+        className="seat__host"
         title="Anfitrión"
         initial={{ y: -30, opacity: 0, rotate: -30 }}
         animate={{ y: [0, -4, 0], opacity: 1, rotate: -14 }}
         transition={{ y: { duration: 2.2, repeat: Infinity, ease: 'easeInOut' }, default: { type: 'spring', stiffness: 400, damping: 14 } }}
       >
-        <IconCrown />
+        <IconStar />
       </motion.span>
     )}
 
@@ -72,7 +73,7 @@ const Seat = ({ player, isHost, isMe, canKick, onKick, index }) => (
       {!player.connected && <span className="ui-chip seat__tag seat__tag--off">Desconectado</span>}
       {player.wins > 0 && (
         <span className="ui-chip seat__tag seat__tag--wins" title={`${player.wins} ${player.wins === 1 ? 'victoria' : 'victorias'} en esta sala`}>
-          👑 {player.wins}
+          <CrownIcon className="seat__tag-crown" size={14} /> {player.wins}
         </span>
       )}
     </div>
@@ -96,7 +97,7 @@ const EmptySeat = ({ index }) => (
     >
       ?
     </motion.div>
-    <div className="seat__name seat__name--empty ui-dots">Esperando</div>
+    <div className="seat__name seat__name--empty">Libre</div>
   </motion.li>
 );
 
@@ -236,11 +237,12 @@ export const RoomScreen = () => {
             ) : (
               <div className="room__waiting">
                 <motion.span
-                  className="room__waiting-crown"
+                  className="room__waiting-host"
+                  title="Anfitrión"
                   animate={{ rotate: [-10, 10, -10] }}
                   transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
                 >
-                  <IconCrown />
+                  <IconStar />
                 </motion.span>
                 <span className="ui-dots">
                   Esperando a que <b style={{ color: host?.color }}>{host?.name || 'el anfitrión'}</b> empiece la partida

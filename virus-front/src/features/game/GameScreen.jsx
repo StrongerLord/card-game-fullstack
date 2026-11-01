@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 import { cardLabel } from '../../lib/cards';
-import { sfx, isMuted, toggleMute, onMuteChange } from '../../lib/sfx';
+import { sfx } from '../../lib/sfx';
 import { computeLayout, opponentsOf } from './layout';
 import { useEventPlayer, registerDeal } from './events';
 import { useInteraction } from './interaction';
@@ -17,8 +17,10 @@ import { ConfirmDialog, EndModal } from './Dialogs';
 import { ChatPanel } from './ChatPanel';
 import { CardTip } from './CardTip';
 import { EmotePicker } from '../emotes/EmotePicker';
+import { VolumeControl } from '../lobby/VolumeControl';
 import doodles from '../../assets/doodles.png';
 import './game.css';
+import './ui.css';
 
 // Modo de demostración sólo en desarrollo: ?demo=game | ?demo=game6
 if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -56,12 +58,6 @@ const useTurnTimer = (view) => {
   return ref.current.value;
 };
 
-const useMuted = () => {
-  const [muted, setMutedState] = useState(isMuted());
-  useEffect(() => onMuteChange(setMutedState), []);
-  return muted;
-};
-
 // Segundos restantes, re-renderizando sólo este pedacito
 const Countdown = memo(function Countdown({ end }) {
   const [now, setNow] = useState(Date.now());
@@ -75,14 +71,6 @@ const Countdown = memo(function Countdown({ end }) {
 
 // ---------- Íconos ----------
 
-const SpeakerIcon = ({ muted }) => (
-  <svg viewBox="0 0 24 24" aria-hidden>
-    <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" />
-    {muted
-      ? <path d="m15.5 9.5 5 5m0-5-5 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      : <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />}
-  </svg>
-);
 const ExitIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden>
     <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
@@ -113,10 +101,9 @@ export const GameScreen = () => {
   const size = useWindowSize();
   const players = useMemo(() => view?.players || [], [view]);
   const opps = useMemo(() => opponentsOf(players, me), [players, me]);
-  const L = useMemo(() => computeLayout(size.w, size.h, opps.length), [size.w, size.h, opps.length]);
   const ix = useInteraction({ view, me });
+  const L = useMemo(() => computeLayout(size.w, size.h, opps.length, { myTurn: ix.layoutTurn }), [size.w, size.h, opps.length, ix.layoutTurn]);
   const timer = useTurnTimer(view);
-  const muted = useMuted();
   const [chatOpen, setChatOpen] = useState(false);
   const [confirmExit, setConfirmExit] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -172,10 +159,10 @@ export const GameScreen = () => {
     return () => clearTimeout(t);
   }, [ix.card, ix.first, ix.hl]);
 
-  // El modal de fin aparece cuando ya se vio la jugada ganadora
+  // El modal de fin aparece cuando ya se vio la jugada ganadora (y la secuencia de victoria, ~2.4 s)
   useEffect(() => {
     if (!winner) { setShowEnd(false); return undefined; }
-    const t = setTimeout(() => setShowEnd(true), 1100);
+    const t = setTimeout(() => setShowEnd(true), 2600);
     return () => clearTimeout(t);
   }, [winner]);
 
@@ -216,24 +203,39 @@ export const GameScreen = () => {
   const canPass = ix.myTurn && view.hand.length === 0;
 
   // Texto de ayuda sobre mi cuerpo
+  const noTargets = !!ix.card && !ix.tableTarget && ix.targets.length === 0;
+  const waitNudge = ix.nudge?.kind === 'hint' ? ix.nudge : null;
   let hint = null;
   if (winner) hint = null;
   else if (ix.discardMode) hint = { title: 'Descartar', text: `Elige de 1 a 3 cartas para tirar (${ix.discardIds.length}/3)` };
   else if (ix.card) {
-    const noTargets = !ix.tableTarget && ix.targets.length === 0;
     hint = {
       title: cardLabel(ix.card),
       text: ix.hint,
-      warn: noTargets ? 'Ahora no tiene ningún destino: mejor descártala' : null,
+      // En vertical el aviso va en un chip aparte, más corto
+      warn: noTargets ? (L.portrait ? 'Sin destino' : 'Ahora no tiene ningún destino: mejor descártala') : null,
     };
-  } else if (ix.myTurn) hint = { title: '¡Tu turno!', text: 'Juega una carta (clic o arrástrala) o descarta' };
-  else if (turnGp) hint = { title: `Turno de ${turnGp.name}`, text: 'Mientras, puedes ver tus cartas', color: infoOf(turnGp.id)?.color };
+  } else if (ix.myTurn) hint = { title: '¡Tu turno!', text: L.portrait ? 'Toca o arrastra una carta' : 'Juega una carta (clic o arrástrala) o descarta' };
+  else if (ix.playing) {
+    // Mi jugada se está animando: sin reloj ni botones hasta que termine
+    hint = { title: 'Jugando…', text: waitNudge ? waitNudge.text : 'Mira cómo queda la mesa', color: infoOf(me)?.color, key: waitNudge ? 'wait' : 'playing' };
+  }
+  else if (turnGp) {
+    hint = {
+      title: `Turno de ${turnGp.name}`,
+      text: waitNudge ? waitNudge.text : 'Mientras, puedes ver tus cartas',
+      color: infoOf(turnGp.id)?.color,
+      key: waitNudge ? 'wait' : null,
+    };
+  }
+  const organTarget = ix.hl.bodies.has(me);
+  const dropToast = ix.nudge?.kind === 'toast' ? ix.nudge : null;
 
   return (
     <MotionConfig reducedMotion="user">
       <LayoutGroup>
         <div
-          className={`gt-root ${ix.card ? 'has-selection' : ''} ${ix.myTurn ? 'is-my-turn' : ''} ${L.portrait ? 'is-portrait' : ''}`}
+          className={`gt-root ${ix.card ? 'has-selection' : ''} ${ix.myTurn ? 'is-my-turn' : ''} ${L.portrait ? 'is-portrait' : ''} ${ix.dragging ? 'is-dragging' : ''} ${ix.hover === 'discard' ? 'is-over-discard' : ''}`}
           style={{ '--radius': `${L.radius}px`, '--pad': `${L.pad}px`, '--gap': `${L.gap}px`, '--u': `${Math.min(size.w / 1920, size.h / 1080)}` }}
         >
           <div className="gt-bg" style={{ backgroundImage: `url(${doodles})` }} />
@@ -265,9 +267,13 @@ export const GameScreen = () => {
           ))}
 
           {/* Mi cuerpo */}
+          {/* Con un órgano en la mano, todo el panel es destino (no sólo el hueco libre) */}
           <div
-            className={`gt-me-panel ${myGp?.isTurn ? 'is-turn' : ''}`}
+            className={`gt-me-panel ${myGp?.isTurn ? 'is-turn' : ''} ${organTarget ? 'is-drop' : ''} ${organTarget && ix.hover === `body:${me}` ? 'is-hover' : ''}`}
             style={{ left: M.panel.x, top: M.panel.y, width: M.panel.w, height: M.panel.h, paddingTop: L.pad + M.hintRoom, '--pc': infoOf(me)?.color || '#ffae00' }}
+            data-drop={organTarget ? 'body' : undefined}
+            data-pid={organTarget ? me : undefined}
+            onClick={organTarget ? (e) => { if (e.target === e.currentTarget) ix.onBody(me); } : undefined}
           >
             {myGp && (
               <Body
@@ -281,7 +287,7 @@ export const GameScreen = () => {
                 picked={ix.picked}
                 hover={ix.hover}
                 onSlot={ix.onSlot}
-                organTarget={ix.hl.bodies.has(me)}
+                organTarget={organTarget}
                 onBody={ix.onBody}
                 className="gt-my-body"
                 ownerName={myGp.name}
@@ -291,12 +297,12 @@ export const GameScreen = () => {
           </div>
 
           {/* Pista de la carta seleccionada / de quién es el turno */}
-          <div className="gt-hint-wrap" style={{ left: size.w / 2, top: M.panel.y }}>
+          <div className="gt-hint-wrap" style={{ left: size.w / 2, top: M.hint?.y ?? M.panel.y }}>
             <AnimatePresence mode="wait">
               {hint && (
                 <motion.div
-                  key={hint.title + (hint.warn || '')}
-                  className={`gt-hint ${ix.card ? 'is-card' : ''}`}
+                  key={hint.title + (hint.warn || '') + (hint.key || '')}
+                  className={`gt-hint ${ix.card ? 'is-card' : ''} ${hint.warn ? 'has-warn' : ''}`}
                   style={{ '--hc': hint.color || 'var(--accent)' }}
                   initial={{ opacity: 0, y: 12, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -305,9 +311,23 @@ export const GameScreen = () => {
                 >
                   <strong>{hint.title}</strong>
                   <span>{hint.text}</span>
-                  {hint.warn && <em>{hint.warn}</em>}
+                  {hint.warn && !L.portrait && <em>{hint.warn}</em>}
                   {ix.myTurn && timer && <Countdown end={timer.end} />}
                 </motion.div>
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {hint?.warn && L.portrait && (
+                <motion.em
+                  key="warn"
+                  className="gt-hint-warn"
+                  initial={{ opacity: 0, scale: 0.7 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.12 } }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                >
+                  {hint.warn}
+                </motion.em>
               )}
             </AnimatePresence>
           </div>
@@ -335,6 +355,11 @@ export const GameScreen = () => {
           {/* Botones de acción junto a la mano */}
           <div className={`gt-actions ${M.actions?.row ? 'is-row' : ''}`} style={M.actions ? { right: M.actions.right, bottom: M.actions.bottom, height: M.avatar.size } : { left: actionsLeft, bottom: L.pad * 1.5 }}>
             <AnimatePresence mode="popLayout">
+              {noTargets && (
+                <motion.button key="discard-one" type="button" className="gt-btn gt-btn-accent gt-btn-throb" disabled={ix.pending} onClick={() => ix.discardOne()} {...btnAnim}>
+                  Descartarla
+                </motion.button>
+              )}
               {ix.myTurn && !ix.discardMode && !ix.card && view.hand.length > 0 && (
                 <motion.button key="discard" type="button" className="gt-btn gt-btn-ghost" onClick={ix.toggleDiscard} {...btnAnim}>
                   Descartar
@@ -376,20 +401,30 @@ export const GameScreen = () => {
 
           <Narrator style={L.narrator || { left: L.center.x + L.pad, top: L.center.y, width: Math.max(200, (L.center.w - L.center.card.w * 2.5) / 2 - L.pad * 2) }} />
           <ErrorToasts style={{ left: size.w / 2, bottom: handCard.h * 0.95 + L.pad }} />
+          {/* Aviso neutro (no es un error): por ejemplo, la carta se soltó fuera de un destino */}
+          <div className="gt-nudge-wrap" style={{ left: size.w / 2, bottom: handCard.h * 0.95 + L.pad }} aria-live="polite">
+            <AnimatePresence>
+              {dropToast && (
+                <motion.div
+                  key={dropToast.id}
+                  className="gt-nudge"
+                  initial={{ opacity: 0, y: 14, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, transition: { duration: 0.15 } }}
+                  transition={{ type: 'spring', stiffness: 520, damping: 30 }}
+                >
+                  {dropToast.text}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Controles: sonido, chat, salir */}
           <div className="gt-controls" style={L.controls}>
-            <button
-              type="button"
-              className={`gt-icon-btn ${muted ? 'is-off' : ''}`}
-              onClick={() => { toggleMute(); sfx.click(); }}
-              aria-label={muted ? 'Activar sonido' : 'Silenciar'}
-              title={muted ? 'Activar sonido' : 'Silenciar'}
-            >
-              <SpeakerIcon muted={muted} />
-            </button>
+            {/* El botón se pone gris (is-off) solo, cuando todo está en silencio o en 0 */}
+            <VolumeControl buttonClassName="gt-icon-btn" variant="table" />
             <EmotePicker buttonClassName="gt-icon-btn" />
-            <ChatPanel me={me} open={chatOpen} onToggle={() => setChatOpen((o) => !o)} />
+            <ChatPanel me={me} open={chatOpen} onToggle={() => setChatOpen((o) => !o)} portrait={L.portrait} />
             <button type="button" className="gt-icon-btn" onClick={() => setConfirmExit(true)} aria-label="Salir de la partida" title="Salir">
               <ExitIcon />
             </button>

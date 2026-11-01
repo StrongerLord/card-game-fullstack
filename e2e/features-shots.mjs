@@ -1,5 +1,5 @@
 // Capturas de las funciones nuevas: emotes (lobby y mesa), reacciones de los bots, ayuda de las cartas,
-// marcador de victorias y trofeos en los avatares.
+// marcador de victorias y coronas en los avatares.
 //
 //   node e2e/features-shots.mjs      (servidor en :3001 y vite en :5173 ya corriendo)
 //
@@ -67,7 +67,7 @@ const main = async () => {
     let gotBotSay = false;
     let gotOrganTip = false;
     let last = null;
-    for (let guard = 0; guard < 400; guard++) {
+    for (let guard = 0; guard < 1600; guard++) {
       const s = await store(() => {
         const st = window.__ronaStore.getState();
         return { g: st.game, q: st.eventQueue.length };
@@ -104,7 +104,7 @@ const main = async () => {
     await sleep(2500);
     await shot('end-scoreboard');
 
-    // Revancha y nueva partida: el ganador lleva su trofeo en el avatar
+    // Revancha y nueva partida: el ganador lleva su corona en el avatar
     await page.getByRole('button', { name: 'Revancha' }).click();
     await page.locator('.seats').waitFor({ timeout: 8000 });
     await sleep(900);
@@ -112,7 +112,7 @@ const main = async () => {
     await store(() => window.__ronaStore.getState().startGame());
     await page.locator('.gt-root:not(.gt-loading)').waitFor({ timeout: 10000 });
     await sleep(2500);
-    if (!(await page.locator('.gt-badge-wins').count())) problems.push('no aparece el trofeo en la mesa');
+    if (!(await page.locator('.gt-badge-wins').count())) problems.push('no aparece la corona en la mesa');
     await shot('table-wins');
   } finally {
     await browser.close();

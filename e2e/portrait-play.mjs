@@ -81,7 +81,7 @@ try {
 
   // Jugar hasta el final
   let last = null;
-  for (let guard = 0; guard < 500; guard++) {
+  for (let guard = 0; guard < 2000; guard++) {
     const s = await store(() => { const st = window.__ronaStore.getState(); return { g: st.game, q: st.eventQueue.length }; });
     if (s.g?.winner) break;
     if (s.g && s.g.turnPlayerId === s.g.you && s.q === 0 && s.g.turnNumber !== last) {

@@ -19,6 +19,8 @@ const bannerBus = makeBus();
 export const narrate = (text, opts = {}) => narratorBus.emit({ text, ...opts });
 export const toastError = (text) => errorBus.emit({ text });
 export const showBanner = (text, opts = {}) => bannerBus.emit({ text, ...opts });
+// Quita el banner en cuanto empieza otra jugada (para que no tape la mesa)
+export const hideBanner = () => bannerBus.emit(null);
 
 let seq = 0;
 
@@ -104,9 +106,10 @@ export const ErrorToasts = memo(function ErrorToasts({ style }) {
 export const TurnBanner = memo(function TurnBanner() {
   const [banner, setBanner] = useState(null);
   useEffect(() => bannerBus.on((b) => {
+    if (!b) { setBanner(null); return; }
     const item = { id: ++seq, ...b };
     setBanner(item);
-    setTimeout(() => setBanner((cur) => (cur?.id === item.id ? null : cur)), b.ms || 1500);
+    setTimeout(() => setBanner((cur) => (cur?.id === item.id ? null : cur)), b.ms || 1000);
   }), []);
   return (
     <AnimatePresence>

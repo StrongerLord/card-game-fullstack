@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 import { BACK_IMAGE } from '../../lib/cards';
-import { IconRefresh, IconUsers, IconCrown } from './icons';
+import { IconRefresh, IconUsers, IconStar } from './icons';
 
 const STATUS = {
   lobby: { label: 'En espera', cls: 'is-lobby' },
@@ -22,11 +22,12 @@ const RoomRow = ({ room, onJoin, joining }) => {
   const status = STATUS[room.status] || STATUS.lobby;
   const full = room.playerCount >= room.maxPlayers;
   const canJoin = room.status === 'lobby' && !full;
-  const why = room.status !== 'lobby' ? 'En juego' : full ? 'Llena' : '';
+  const finished = room.status === 'finished';
+  const why = finished ? 'Terminada' : room.status !== 'lobby' ? 'En juego' : full ? 'Llena' : '';
   return (
     <motion.li
       layout
-      className={`room-row ${canJoin ? '' : 'is-locked'}`}
+      className={`room-row ${canJoin ? '' : 'is-locked'} ${finished ? 'is-finished' : ''}`}
       initial={{ opacity: 0, x: 60, scale: 0.9 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: -60, scale: 0.9, transition: { duration: 0.2 } }}
@@ -34,7 +35,7 @@ const RoomRow = ({ room, onJoin, joining }) => {
     >
       <div className="room-row__main">
         <div className="room-row__name" title={room.name}>{room.name}</div>
-        <div className="room-row__host"><IconCrown /> {room.hostName || '—'}</div>
+        <div className="room-row__host" title="Anfitrión"><IconStar /> {room.hostName || '—'}</div>
       </div>
       <span className={`ui-chip room-row__status ${status.cls}`}>
         <i className="room-row__led" /> {status.label}
@@ -62,8 +63,8 @@ export const RoomList = ({ onJoin, joiningId }) => {
   const refreshRooms = useStore((s) => s.refreshRooms);
   const [spin, setSpin] = useState(0);
 
-  // Primero las que aceptan gente, luego las demás
-  const rank = (r) => (r.status === 'lobby' && r.playerCount < r.maxPlayers ? 0 : r.status === 'lobby' ? 1 : 2);
+  // Primero las que aceptan gente, luego las llenas, las que están jugando y al final las terminadas
+  const rank = (r) => (r.status === 'lobby' && r.playerCount < r.maxPlayers ? 0 : r.status === 'lobby' ? 1 : r.status === 'finished' ? 3 : 2);
   const sorted = [...rooms].sort((a, b) => rank(a) - rank(b));
   const open = rooms.filter((r) => rank(r) === 0).length;
 

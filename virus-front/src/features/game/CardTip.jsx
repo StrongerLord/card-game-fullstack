@@ -8,6 +8,17 @@ import '../emotes/emotes.css';
 const HOVER_MS = 550;
 const PRESS_MS = 450;
 const TIP_W = 290;
+// La primera vez en una pantalla táctil se enseña el gesto con un chip (y no se vuelve a mostrar)
+const LONGPRESS_KEY = 'rona.tip.longpress';
+const LONGPRESS_CHIP_MS = 3000;
+
+const isCoarse = () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+const seenLongPress = () => {
+  try { return localStorage.getItem(LONGPRESS_KEY) === '1'; } catch { return true; }
+};
+const markLongPress = () => {
+  try { localStorage.setItem(LONGPRESS_KEY, '1'); } catch { /* sin almacenamiento */ }
+};
 
 const STATUS_LABEL = { healthy: 'sano', infected: 'infectado', vaccinated: 'vacunado', immunized: 'inmune (ya nada le afecta)' };
 const safeStatus = (slot) => {
@@ -51,6 +62,16 @@ export const CardTip = memo(function CardTip({ view, me }) {
   const indexRef = useRef(index);
   indexRef.current = index;
   const [tip, setTip] = useState(null); // { id, rect }
+  const [press, setPress] = useState(null); // anillo de progreso bajo el dedo: { x, y, n }
+  const [teach, setTeach] = useState(false); // chip de "mantén presionada…"
+
+  // Chip de la primera vez: un momento después de que llega la mano, sólo en táctil
+  useEffect(() => {
+    if (!isCoarse() || seenLongPress()) return undefined;
+    const show = setTimeout(() => { setTeach(true); markLongPress(); }, 1400);
+    const hide = setTimeout(() => setTeach(false), 1400 + LONGPRESS_CHIP_MS);
+    return () => { clearTimeout(show); clearTimeout(hide); };
+  }, []);
 
   useEffect(() => {
     let timer = null;
@@ -58,7 +79,7 @@ export const CardTip = memo(function CardTip({ view, me }) {
     let el = null;
     let start = null;
     let pressed = false;
-    const clear = () => { clearTimeout(timer); timer = null; };
+    const clear = () => { clearTimeout(timer); timer = null; setPress(null); };
     const hide = () => {
       clear();
       clearTimeout(hideTimer);
@@ -71,6 +92,8 @@ export const CardTip = memo(function CardTip({ view, me }) {
       const id = target.dataset.cardId;
       if (!indexRef.current.has(id) || !target.isConnected) return false;
       setTip({ id, rect: target.getBoundingClientRect() });
+      setPress(null);
+      setTeach(false);
       return true;
     };
     const cardAt = (target) => target?.closest?.('.gt-root [data-card-id]') || null;
@@ -92,6 +115,7 @@ export const CardTip = memo(function CardTip({ view, me }) {
       if (!t) return;
       el = t;
       start = { x: e.clientX, y: e.clientY };
+      setPress({ x: e.clientX, y: e.clientY, n: e.timeStamp });
       timer = setTimeout(() => { pressed = show(t); }, PRESS_MS);
     };
     const move = (e) => {
@@ -101,6 +125,7 @@ export const CardTip = memo(function CardTip({ view, me }) {
         hide();
       }
     };
+
     const up = (e) => {
       if (e.pointerType !== 'touch') return;
       const wasPressed = pressed;
@@ -158,6 +183,34 @@ export const CardTip = memo(function CardTip({ view, me }) {
   const extra = entry ? extraLine(entry) : null;
 
   return (
+    <>
+    {press && (
+      <span
+        key={press.n}
+        className="card-press-ring"
+        style={{ left: press.x, top: press.y, '--press-ms': `${PRESS_MS}ms` }}
+        aria-hidden
+      >
+        <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="21" pathLength="100" /></svg>
+      </span>
+    )}
+    <AnimatePresence>
+      {teach && (
+        <motion.div
+          key="teach"
+          className="card-tip-teach"
+          role="status"
+          initial={{ opacity: 0, y: 16, x: '-50%' }}
+          animate={{ opacity: 1, y: 0, x: '-50%' }}
+          exit={{ opacity: 0, y: 10, x: '-50%', transition: { duration: 0.2 } }}
+          transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+          onClick={() => setTeach(false)}
+        >
+          <span className="card-tip-teach-finger" aria-hidden>👆</span>
+          Mantén presionada una carta para ver qué hace
+        </motion.div>
+      )}
+    </AnimatePresence>
     <AnimatePresence>
       {pos && card && (
         <motion.div
@@ -176,5 +229,6 @@ export const CardTip = memo(function CardTip({ view, me }) {
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 });

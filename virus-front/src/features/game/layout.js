@@ -37,32 +37,40 @@ export const fitCards = (boxW, boxH, n, cols = n, gap = 8) => {
 
 // Pantalla parada (celular en vertical): rivales en rejilla arriba, la mesa en medio, mi cuerpo
 // a todo lo ancho, una fila con mi avatar y los botones, y la mano abajo. Los controles van arriba.
-const computePortraitLayout = (W, H, nOpp) => {
+// La pista (qué hace la carta / de quién es el turno) va en su propia franja de HINT_BAND px entre el centro
+// y mi panel, para no tapar mis ranuras. Si es mi turno, la mano sube MY_TURN_LIFT px para que se vea más.
+const HINT_BAND = 34;
+const MY_TURN_LIFT = 16;
+
+const computePortraitLayout = (W, H, nOpp, { myTurn = false } = {}) => {
   const n = clamp(nOpp, 0, 5);
   const pad = clamp(W * 0.02, 5, 14);
   const gap = clamp(W * 0.015, 4, 10);
   const radius = clamp(W * 0.035, 10, 24);
   const barH = 38;
 
-  // Mano abajo: tres cartas grandes que asoman
+  // Mano abajo: tres cartas grandes que asoman (en mi turno, un poco más)
   const handW = Math.round(clamp(Math.min(W * 0.27, H * 0.15), 56, 160));
   const handCard = { w: handW, h: Math.round(handW / CARD_RATIO) };
-  const handTop = H - handCard.h * 0.8;
+  const handRest = H - handCard.h * 0.8; // dónde queda la mano fuera de mi turno: lo demás no se mueve
+  const handTop = myTurn ? Math.max(handRest - MY_TURN_LIFT, H - handCard.h) : handRest;
   // Fila de mi avatar y los botones, justo encima de la mano
   const actionH = clamp(H * 0.055, 38, 56);
-  const actionY = handTop - actionH - gap;
+  const actionY = handRest - actionH - gap;
 
-  // Mi cuerpo: cinco ranuras a lo ancho
-  const hintRoom = clamp(H * 0.02, 10, 20);
+  // Mi cuerpo: cinco ranuras a lo ancho. La pista va en una franja aparte, arriba del panel
+  const hintRoom = 0; // el panel ya no reserva espacio adentro para la pista
+  const hintBand = HINT_BAND;
   const slotsW = W - pad * 4;
   const card5 = fitCards(slotsW, H * 0.16, 5, 5, gap);
   const bodyH = card5.h * (1 + STACK_EXTRA);
-  const mePanelH = hintRoom + pad * 1.5 + bodyH;
+  const mePanelH = pad * 1.5 + bodyH;
   const meTop = actionY - mePanelH;
   const mePanel = { x: pad, y: meTop, w: W - pad * 2, h: H - meTop + radius };
   const me = {
     panel: mePanel,
     hintRoom,
+    hint: { y: meTop - hintBand / 2 - gap * 0.25, band: hintBand },
     slotsBox: { w: slotsW, h: bodyH },
     card4: fitCards(slotsW, bodyH / (1 + STACK_EXTRA) * 1.05, 4, 4, gap * 1.6),
     card5,
@@ -79,7 +87,7 @@ const computePortraitLayout = (W, H, nOpp) => {
 
   // Lo que queda arriba: rivales y centro
   const top0 = barH + pad * 2;
-  const avail = Math.max(120, meTop - gap - top0);
+  const avail = Math.max(120, meTop - hintBand - gap * 0.5 - top0);
   const centerH = n ? clamp(avail * 0.3, 70, 190) : avail;
   const oppH = avail - centerH - gap;
 
@@ -120,8 +128,9 @@ const computePortraitLayout = (W, H, nOpp) => {
   };
 };
 
-export const computeLayout = (W, H, nOpp) => {
-  if (W < H * 0.9) return computePortraitLayout(W, H, nOpp);
+// opts.myTurn: en vertical, la mano sube un poco cuando es mi turno
+export const computeLayout = (W, H, nOpp, opts = {}) => {
+  if (W < H * 0.9) return computePortraitLayout(W, H, nOpp, opts);
   const positions = SEAT_POSITIONS[clamp(nOpp, 0, 5)];
   const hasSides = positions.includes('left');
   const nTop = positions.filter((p) => p === 'top').length;

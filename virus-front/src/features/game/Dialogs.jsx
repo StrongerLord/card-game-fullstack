@@ -7,6 +7,8 @@ import { reducedMotion } from './fx';
 import { useFitFont } from './fitText';
 import { EmoteBubble } from '../emotes/EmoteBubble';
 import { EmoteRow } from '../emotes/EmotePicker';
+import { CrownIcon } from './CrownIcon';
+import { IconEye } from '../lobby/icons';
 
 // Diálogo de confirmación propio (sin window.confirm)
 export const ConfirmDialog = memo(function ConfirmDialog({ open, title, text, confirmLabel = 'Sí', cancelLabel = 'Cancelar', danger, onConfirm, onCancel }) {
@@ -74,7 +76,7 @@ const Scoreboard = ({ scores, me, winnerId }) => {
           <img src={avatars[p.avatar ?? 0] || avatars[0]} alt="" />
           <span className="gt-score-name">{p.name}{p.id === me && <small> (tú)</small>}</span>
           <span className="gt-score-wins">
-            {p.wins > 0 && p.wins === top && '👑 '}
+            {p.wins > 0 && p.wins === top && <CrownIcon className="gt-score-crown" title="Va ganando" />}
             {p.id === winnerId
               ? <motion.b key={p.wins} initial={{ scale: 2.4, color: '#ffae00' }} animate={{ scale: 1, color: '#2a1a5e' }} transition={{ delay: 0.6, type: 'spring', stiffness: 300, damping: 12 }}>{p.wins}</motion.b>
               : <b>{p.wins}</b>}
@@ -109,12 +111,33 @@ export const EndModal = memo(function EndModal({ winner, winnerInfo, isMe, isHos
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  useFitFont(titleRef, Math.round(Math.max(28, Math.min(80, vh * 0.08))), 18, [title, !!winner]);
+  // "Ver mesa": el modal se reduce a una píldora abajo para ver cómo quedó la mesa
+  const [peek, setPeek] = useState(false);
+  useEffect(() => { if (!winner) setPeek(false); }, [winner]);
+  useFitFont(titleRef, Math.round(Math.max(28, Math.min(80, vh * 0.08))), 18, [title, !!winner, peek]);
 
   return (
+    <>
     <AnimatePresence>
-      {winner && (
-        <motion.div className={`gt-modal-back gt-end ${isMe ? 'is-win' : 'is-lose'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+      {winner && peek && (
+        <motion.button
+          key="end-pill"
+          type="button"
+          className={`gt-end-pill ${isMe ? 'is-win' : 'is-lose'}`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20, transition: { duration: 0.2 } }}
+          transition={{ duration: 0.2 }}
+          onClick={() => { setPeek(false); sfx.click(); }}
+        >
+          <CrownIcon className="gt-end-pill-crown" />
+          Ver resultados
+        </motion.button>
+      )}
+    </AnimatePresence>
+    <AnimatePresence>
+      {winner && !peek && (
+        <motion.div className={`gt-modal-back gt-end ${isMe ? 'is-win' : 'is-lose'}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.2 } }}>
           {!isMe && (
             <div className="gt-rain" aria-hidden>
               {Array.from({ length: 22 }, (_, i) => (
@@ -146,15 +169,19 @@ export const EndModal = memo(function EndModal({ winner, winnerInfo, isMe, isHos
             </p>
             {scores.length > 1 && <Scoreboard scores={scores} me={me} winnerId={winner.playerId} />}
             <EmoteRow className="gt-end-emotes" />
-            <div className="gt-modal-actions">
-              <button type="button" className="gt-btn gt-btn-ghost" onClick={onLeave} disabled={busy}>Salir</button>
+            <div className="gt-modal-actions gt-end-actions">
+              <button type="button" className="gt-btn gt-btn-ghost gt-end-leave" onClick={onLeave} disabled={busy}>Salir</button>
+              <button type="button" className="gt-btn gt-btn-ghost gt-end-peek" onClick={() => { setPeek(true); sfx.click(); }} aria-label="Ver mesa" title="Ver cómo quedó la mesa">
+                <IconEye /> <span>Ver mesa</span>
+              </button>
               {isHost
-                ? <button type="button" className="gt-btn gt-btn-accent" onClick={onRematch} disabled={busy}>Revancha</button>
+                ? <button type="button" className="gt-btn gt-btn-accent gt-end-rematch" onClick={onRematch} disabled={busy}>Revancha</button>
                 : <span className="gt-end-wait">Esperando a que el anfitrión pida la revancha…</span>}
             </div>
           </motion.div>
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 });

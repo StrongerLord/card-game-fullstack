@@ -3,7 +3,9 @@
 // mis jugadas pasan por applyAction, los rivales juegan con chooseBotAction, y se generan
 // eventos reales para ver todas las animaciones sin servidor.
 // Escenarios para probar efectos: window.__ronaDemo.run('destroy' | 'cure' | 'immunize' | 'contagion' |
-//   'glove' | 'medicalError' | 'thief' | 'transplant' | 'win' | 'lose' | 'deal' | 'myTurn' | 'chat').
+//   'contagion2' | 'contagion2Swap' | 'contagion2Me' | 'glove' | 'gloveBot' | 'medicalError' | 'thief' | 'transplant' | 'reshuffle' | 'botTurn' | 'win' | 'lose' |
+//   'deal' | 'myTurn' | 'chat').
+// ?bots: todos los rivales son bots (para ver cómo piensan y juegan).
 // Atajo: tecla º / ` abre un panelito con esos botones.
 
 import {
@@ -12,6 +14,34 @@ import {
 import { useStore } from '../../store/useStore';
 
 const TURN_MS = 40000;
+
+// Copia de estimateAnimationMs de virus-back/src/gameRunner.js (lo que tarda la mesa en animar un lote;
+// ver allá la explicación de cada término)
+const HITS = new Set(['organDestroyed', 'cured', 'vaccineRemoved']);
+const SWAPS = new Set(['slotMoved', 'bodiesSwapped', 'virusMoved']);
+const estimateAnimationMs = (events) => {
+  if (!events.some((e) => e.type !== 'turn')) return 0;
+  let ms = 40 + 200;
+  if (events.some((e) => e.type === 'timeout')) ms += 400;
+  const i = events.findIndex((e) => e.type === 'played');
+  const played = events[i];
+  const conseq = played && events[i + 1];
+  if (played?.card?.kind === 'treatment') ms += 900;
+  else if (conseq && HITS.has(conseq.type)) ms += 700 + (conseq.type === 'organDestroyed' ? 280 : 160);
+  const swaps = events.filter((e) => SWAPS.has(e.type)).length;
+  const glove = events.find((e) => e.type === 'handsDiscarded');
+  let land = played || events.some((e) => e.type === 'discarded') ? 600 : 0;
+  if (swaps) land = Math.max(land, 750 + Math.min(4, swaps) * 120);
+  if (glove) land = Math.max(land, 500 + 60 * 3 * glove.playerIds.length);
+  if (land) ms += land + 200 + (glove ? 400 : 150);
+  if (events.some((e) => e.type === 'win')) ms += 1200;
+  for (const e of events) {
+    if (e.type === 'reshuffled') ms += 1450;
+    else if (e.type === 'drew' && e.count > 0) ms += 560 + 110 * (Math.min(3, e.count) - 1);
+    else if (e.type === 'turnSkipped') ms += e.playerId === 'me' ? 900 : 400;
+  }
+  return Math.min(9000, ms);
+};
 
 const PEOPLE = [
   { id: 'me', name: 'Misael', avatar: 7, color: '#ffae00' },
@@ -25,6 +55,7 @@ const PEOPLE = [
 let state = null;
 let seq = 0;
 let botTimer = null;
+let lastAnimMs = 0; // lo que tarda la mesa en animar el último lote (como en el servidor)
 let deadline = 0;
 let timeoutTimer = null;
 
@@ -60,7 +91,8 @@ const push = (events) => {
 const turnId = () => state.players[state.turn].id;
 
 const restartClock = () => {
-  deadline = Date.now() + (turnId() === 'me' ? TURN_MS : 8000);
+  // Como el servidor: el reloj corre desde que la mesa terminó de animar
+  deadline = Date.now() + lastAnimMs + (turnId() === 'me' ? TURN_MS : 8000);
 };
 
 // Avanza la partida: si le toca a un rival, juega solo tras "pensar"
@@ -78,17 +110,19 @@ const schedule = () => {
   }
   const paused = window.__ronaDemo?.paused;
   if (paused) return;
+  // Como el servidor: el bot empieza a pensar cuando la mesa terminó de animar la jugada anterior
   botTimer = setTimeout(() => {
     const action = chooseBotAction(state, pid, { level: 'normal' });
     if (!action) return;
     step(() => applyAction(state, pid, action));
-  }, 1300 + Math.random() * 700);
+  }, lastAnimMs + 1800 + Math.random() * 1400);
 };
 
 const step = (fn) => {
   const before = turnId();
   const res = fn();
   state = res.state;
+  lastAnimMs = estimateAnimationMs(res.events);
   if (turnId() !== before || res.events.some((e) => e.type === 'turn')) restartClock();
   push(res.events);
   schedule();
@@ -162,6 +196,8 @@ const pull = (pred) => {
   return proto ? { ...proto, id: `x${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}` } : null;
 };
 
+const isBotId = (pid) => !!useStore.getState().room?.players?.find((p) => p.id === pid)?.isBot;
+
 const firstOpp = () => state.players.find((p) => p.id !== 'me' && !p.out);
 const slotsOf = (pid) => state.players.find((p) => p.id === pid).body;
 
@@ -203,9 +239,80 @@ const SCENARIOS = {
     const card = pull((c) => c.treatment === 'contagion');
     force(p.id, card, () => ({}));
   },
+  // Contagio de 2 virus a la vez (de ranuras distintas). Con swap: antes un Error médico le pasa el cuerpo
+  // infectado al que contagia, como en la partida donde los virus se teletransportaban.
+  contagion2: (swap = false) => {
+    clearTimeout(botTimer);
+    const st = structuredClone(state);
+    const opps = st.players.filter((p) => p.id !== 'me' && !p.out);
+    // swap === 'me': el Error médico lo juego yo (mis virus pasan a un rival, como en la partida real)
+    const [a, c] = [opps[0], opps[opps.length - 1]];
+    const b = swap === 'me' ? st.players.find((p) => p.id === 'me') : opps[1];
+    if (!c || c === b) return;
+    st.discard.push(...[...a.body, ...b.body, ...c.body].flatMap((s) => [s.organ, ...s.viruses, ...s.medicines]));
+    state = st;
+    const slotOf = (color, infected) => {
+      const organ = pull((x) => x.kind === 'organ' && x.color === color);
+      return { id: organ.id, organ, viruses: infected ? [pull((x) => x.kind === 'virus' && x.color === color)] : [], medicines: [] };
+    };
+    const infected = ['green', 'yellow'].map((color) => slotOf(color, true));
+    const clean = ['green', 'yellow'].map((color) => slotOf(color, false));
+    a.body = clean;
+    b.body = swap ? infected : [];
+    c.body = swap ? [] : infected;
+    useStore.setState({ game: view() });
+    if (swap) {
+      // c se queda con el cuerpo infectado de b (Error médico) y luego contagia a a
+      setTimeout(() => {
+        if (swap === 'me') force('me', pull((x) => x.treatment === 'medicalError'), () => ({ playerId: c.id }));
+        else force(c.id, pull((x) => x.treatment === 'medicalError'), () => ({ playerId: b.id }));
+        clearTimeout(botTimer);
+        setTimeout(() => force(c.id, pull((x) => x.treatment === 'contagion'), () => ({})), 3200);
+      }, 600);
+      return;
+    }
+    setTimeout(() => force(c.id, pull((x) => x.treatment === 'contagion'), () => ({})), 600);
+  },
+  contagion2Swap: () => SCENARIOS.contagion2(true),
+  contagion2Me: () => SCENARIOS.contagion2('me'),
   glove: () => {
     const card = pull((c) => c.treatment === 'glove');
     force(firstOpp().id, card, () => ({}));
+  },
+  // El guante lo juega un bot (con ?bots o en ?demo=game6, donde hay uno)
+  gloveBot: () => {
+    const bot = state.players.find((p) => p.id !== 'me' && !p.out && isBotId(p.id)) || firstOpp();
+    const card = pull((c) => c.treatment === 'glove');
+    force(bot.id, card, () => ({}));
+  },
+  // Le toca a un bot y juega solo (se ve pensar, levantar la carta y jugarla)
+  botTurn: () => {
+    clearTimeout(botTimer);
+    const bot = state.players.find((p) => p.id !== 'me' && !p.out && isBotId(p.id)) || firstOpp();
+    const st = structuredClone(state);
+    st.turn = st.players.findIndex((p) => p.id === bot.id);
+    st.players[st.turn].skipNext = false;
+    st.turnNumber += 1;
+    state = st;
+    lastAnimMs = 0;
+    restartClock();
+    push([{ type: 'turn', playerId: bot.id, turnNumber: st.turnNumber }]);
+    const was = window.__ronaDemo.paused;
+    window.__ronaDemo.paused = false;
+    schedule();
+    window.__ronaDemo.paused = was;
+  },
+  // El mazo se queda vacío y descarto: se rebaraja el descarte antes de robar
+  reshuffle: () => {
+    clearTimeout(botTimer);
+    const st = structuredClone(state);
+    st.turn = st.players.findIndex((p) => p.id === 'me');
+    st.discard = [...st.deck, ...st.discard];
+    st.deck = [];
+    state = st;
+    const me = st.players[st.turn];
+    if (!me.hand.length) return;
+    step(() => applyAction(state, 'me', { type: 'discard', cardIds: [me.hand[0].id] }));
   },
   medicalError: () => {
     const card = pull((c) => c.treatment === 'medicalError');
@@ -305,7 +412,8 @@ const restart = (mode, remount = false) => {
   }
   restartClock();
   seq = 0;
-  const players = PEOPLE.slice(0, n).map((p) => ({ ...p, isBot: !!p.isBot, connected: p.id !== 'elian' }));
+  const allBots = new URLSearchParams(window.location.search).has('bots');
+  const players = PEOPLE.slice(0, n).map((p) => ({ ...p, isBot: !!p.isBot || (allBots && p.id !== 'me'), connected: p.id !== 'elian' || allBots }));
   useStore.setState({
     demo: true,
     connected: true,

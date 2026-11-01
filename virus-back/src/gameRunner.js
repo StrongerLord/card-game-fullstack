@@ -8,6 +8,44 @@ import {
 // Veces que un mismo jugador puede recibir margen extra por reconectarse en su turno
 const MAX_RECONNECT_GRANTS = 3;
 
+// Cuánto tarda la mesa en animar un lote (aprox.): el bot empieza a "pensar" cuando el cliente terminó,
+// y el reloj de un humano empieza a correr cuando ya ve que es su turno.
+// Sigue la coreografía de virus-front/src/features/game/events.js (playBatch), que va EN SERIE:
+//   revelación del tratamiento → acercamiento e impacto → aterrizaje y vuelos → rebarajeo → robos de cada
+//   jugador uno tras otro → sellos de turno perdido → paso del turno.
+// Se calcula como lo vería un rival de quien juega (el que más anima: revelación incluida).
+// isHuman(playerId): el sello de un humano dura más (se le avisa en grande).
+const HITS = new Set(['organDestroyed', 'cured', 'vaccineRemoved']);
+const SWAPS = new Set(['slotMoved', 'bodiesSwapped', 'virusMoved']);
+const MAX_ANIMATION_MS = 9000;
+
+export const estimateAnimationMs = (events, { isHuman = () => false } = {}) => {
+  if (!events.some((e) => e.type !== 'turn')) return 0;
+  let ms = 40 + 200; // espera del estado + paso del turno
+  if (events.some((e) => e.type === 'timeout')) ms += 400;
+  const i = events.findIndex((e) => e.type === 'played');
+  const played = events[i];
+  const conseq = played && events[i + 1];
+  // A. Tratamiento en grande al centro, o acercamiento de la carta a su objetivo e impacto
+  if (played?.card?.kind === 'treatment') ms += 900;
+  else if (conseq && HITS.has(conseq.type)) ms += 700 + (conseq.type === 'organDestroyed' ? 280 : 160);
+  // B. Aterrizaje: vuelos de cartas (los intercambios y el guante son más largos) + efectos + respiro
+  const swaps = events.filter((e) => SWAPS.has(e.type)).length;
+  const glove = events.find((e) => e.type === 'handsDiscarded');
+  let land = played || events.some((e) => e.type === 'discarded') ? 600 : 0;
+  if (swaps) land = Math.max(land, 750 + Math.min(4, swaps) * 120);
+  if (glove) land = Math.max(land, 500 + 60 * 3 * glove.playerIds.length);
+  if (land) ms += land + 200 + (glove ? 400 : 150);
+  if (events.some((e) => e.type === 'win')) ms += 1200;
+  // C. En orden: rebarajeo, robos (uno por jugador) y sellos
+  for (const e of events) {
+    if (e.type === 'reshuffled') ms += 1450;
+    else if (e.type === 'drew' && e.count > 0) ms += 560 + 110 * (Math.min(3, e.count) - 1);
+    else if (e.type === 'turnSkipped') ms += isHuman(e.playerId) ? 900 : 400;
+  }
+  return Math.min(MAX_ANIMATION_MS, ms);
+};
+
 export class GameRunner {
   /**
    * @param {object} o
@@ -30,6 +68,7 @@ export class GameRunner {
     this.log = log;
     this.state = createGame({ players, seed: seed ?? crypto.randomInt(2 ** 31) });
     this.seq = 0;
+    this.animMs = 0; // lo que tarda en animarse el último lote emitido
     this.turnDeadline = 0;
     this.turnMs = timing.turnMs;
     this.timer = null;
@@ -104,6 +143,7 @@ export class GameRunner {
   commit(state, events) {
     this.state = state;
     this.seq += 1;
+    this.animMs = estimateAnimationMs(events, { isHuman: (pid) => !this.lookup(pid)?.isBot });
     this.schedule();
     this.emitEvents({ seq: this.seq, events });
     this.emitStates();
@@ -125,12 +165,13 @@ export class GameRunner {
     this.botTimer = null;
   }
 
-  armTurnTimer(ms) {
+  // grace: lo que tarda la mesa en mostrar que empezó el turno (el reloj visible arranca ahí)
+  armTurnTimer(ms, grace = 0) {
     if (this.timer) clearTimeout(this.timer);
     this.turnMs = ms;
-    this.turnDeadline = Date.now() + ms;
+    this.turnDeadline = Date.now() + grace + ms;
     const turnNumber = this.state.turnNumber;
-    this.timer = setTimeout(() => this.onTurnTimeout(turnNumber), ms);
+    this.timer = setTimeout(() => this.onTurnTimeout(turnNumber), grace + ms);
   }
 
   // Programa lo que toque para el jugador en turno
@@ -142,15 +183,19 @@ export class GameRunner {
     }
     const playerId = this.currentPlayerId;
     const info = this.lookup(playerId) || { isBot: false, connected: false };
+    const { botMinMs, botMaxMs } = this.timing;
+    // Con los tiempos reales (no los cortos de los tests) el turno empieza cuando la mesa terminó de
+    // animar la jugada anterior: el bot no "piensa" mientras todavía vuelan las cartas, y el humano no
+    // pierde segundos de su reloj mirando la animación
+    const extra = botMinMs >= 1000 ? this.animMs : 0;
     if (info.isBot) {
       // El reloj visible es el normal, pero el bot actúa tras "pensar" un poco
-      this.armTurnTimer(this.timing.turnMs);
-      const { botMinMs, botMaxMs } = this.timing;
-      const delay = botMinMs + Math.floor(Math.random() * (Math.max(0, botMaxMs - botMinMs) + 1));
+      this.armTurnTimer(this.timing.turnMs, extra);
+      const delay = extra + botMinMs + Math.floor(Math.random() * (Math.max(0, botMaxMs - botMinMs) + 1));
       const turnNumber = this.state.turnNumber;
       this.botTimer = setTimeout(() => this.onBotTurn(playerId, info.level, turnNumber), delay);
     } else {
-      this.armTurnTimer(info.connected ? this.timing.turnMs : this.timing.disconnectedTurnMs);
+      this.armTurnTimer(info.connected ? this.timing.turnMs : this.timing.disconnectedTurnMs, extra);
     }
   }
 
